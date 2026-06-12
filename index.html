@@ -391,15 +391,7 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
         or there was a problem accessing the data.<br><br>
         Please contact your administrator, or sign in with a different account.</p>
         <button class="google-btn" onclick="signOut()">Sign Out &amp; Try Different Account</button>
-        <div style="margin-top:14px;font-size:12px;color:var(--text3);text-align:left">
-          <b>To find which Google account has access:</b><br>
-          1. Open <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">drive.google.com</a> in each Google account you use<br>
-          2. Search for a file containing <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">1ZNxdqAs</code> or named "MIS" / "Restaurant"<br>
-          3. Once found, click Share and add both:<br>
-          &nbsp;&nbsp;• nirmal.mishra1@gmail.com<br>
-          &nbsp;&nbsp;• nirmal@fooddestination.net<br>
-          as <b>Editor</b>, then sign in again here.
-        </div>
+        <div id="access-help-block" style="margin-top:14px;font-size:12px;color:var(--text3);text-align:left"></div>
       </div>
     </div>
 
@@ -647,7 +639,7 @@ let curRestaurant = null; // {id, name, address, sheetId}
 let userEmail = null;
 let isAdmin = false;
 let allRestaurants = []; // for admin picker
-const SCOPES      = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+const SCOPES      = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY   = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -776,6 +768,8 @@ async function onSignedIn(){
     const rest = await findRestaurantForEmail(userEmail);
     if(!rest){
       document.getElementById('denied-email').textContent=userEmail;
+      document.getElementById('access-help-block').innerHTML =
+        'This email is not yet added to any restaurant. Ask your administrator to add <b>'+userEmail+'</b> via the Access tab.';
       showScreen('access-denied-screen');
       loading(false);
       return;
