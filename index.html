@@ -832,6 +832,13 @@ async function init(){
       if(resp.error){ toast('Auth error: '+resp.error,'error'); return; }
       accessToken=resp.access_token;
       gapi.client.setToken({access_token:accessToken});
+      console.log('Granted OAuth scopes:', resp.scope);
+      window._grantedScopes = resp.scope || '(none returned)';
+      const needed=['spreadsheets','drive.file'];
+      const missing=needed.filter(s=>!(resp.scope||'').includes(s));
+      if(missing.length){
+        toast('Missing scopes: '+missing.join(', ')+' — check console for full list','error');
+      }
       await onSignedIn();
     }
   });
