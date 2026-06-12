@@ -518,6 +518,12 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
           </div>
           <button class="add-row-btn" style="margin-top:0;width:100%" onclick="migrateExistingData()">Migrate Existing Data →</button>
         </div>
+        <div id="kakeda-migration-section" class="admin-only" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:20px;text-align:left">
+          <div style="font-size:13px;color:var(--text2);margin-bottom:10px">
+            🍽️ Kakeda Hotel's existing data (separate sheet) hasn't been migrated yet. This is <b>read-only</b> — the original sheet is never modified.
+          </div>
+          <button class="add-row-btn" style="margin-top:0;width:100%" onclick="migrateKakedaHotel()">Migrate Kakeda Hotel Data →</button>
+        </div>
       </div>
     </div>
 
@@ -743,6 +749,7 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const CLIENT_ID   = '102304868649-eo246iimdv39cms3mh7qrh8qnhsf97v7.apps.googleusercontent.com'; // Eatss project OAuth client
 const MASTER_SHEET_ID = '1V_30XDptDTbHo6-1B21iGaorfvHHhsbZrq0GP2puiTg'; // Eatss Master Registry Sheet
+const KAKEDA_SOURCE_SHEET_ID = '1ZNxdqAsdjBmdiB6qITHWejVGcObkRRSEIjwAxqWAEDA'; // READ-ONLY — Kakeda Hotel's existing standalone data sheet
 const ADMIN_EMAILS = ['nirmal.mishra1@gmail.com','nirmal@fooddestination.net']; // Super admins — see all restaurants
 let SHEET_ID = null; // Set after restaurant is selected — points to that restaurant's own data sheet
 let curRestaurant = null; // {id, name, address, sheetId}
@@ -919,6 +926,17 @@ async function onSignedIn(){
 }
 
 // ── REGISTRY (Master Sheet) ─────────────────────────────────────────────────
+// Read-only fetch from any sheet by ID — never writes/deletes. Used for migration sources.
+async function sourceGet(sheetId,range){
+  try{
+    const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sheetId,range});
+    return r.result.values||[];
+  }catch(e){
+    if(e.status===400||e.result?.error?.code===400) return [];
+    throw new Error('Cannot read source sheet ('+sheetId+'): '+(e.result?.error?.message||e.message||'permission denied'));
+  }
+}
+
 async function masterGet(range){
   try{
     const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:MASTER_SHEET_ID,range});
@@ -970,6 +988,14 @@ async function loadAllRestaurants(){
   renderRestaurantPicker();
   // Check if any pre-existing single-tenant data exists in the Master Sheet
   await checkForMigratableData();
+  // Check if Kakeda Hotel (separate sheet) has already been migrated
+  checkKakedaMigrationStatus();
+}
+
+function checkKakedaMigrationStatus(){
+  const alreadyDone = allRestaurants.some(r=>r.sheetId===KAKEDA_SOURCE_SHEET_ID || (r.name&&r.name.toLowerCase().includes('kakeda')));
+  const el=document.getElementById('kakeda-migration-section');
+  if(el) el.style.display = alreadyDone ? 'none' : 'block';
 }
 
 async function checkForMigratableData(){
@@ -989,6 +1015,121 @@ async function checkForMigratableData(){
 }
 
 // ── ONE-TIME MIGRATION: Move any pre-existing single-tenant data into its own sheet
+async function migrateKakedaHotel(){
+  if(!confirm('This will READ data from the existing Kakeda Hotel sheet (no changes made there) and create a brand-new dedicated sheet for it inside Eatss. Vendors will get payment frequencies: "Sadik Trading" → Calendar Periods (1-10/11-20/21-End), all other vendors → Weekly. Continue?')) return;
+  loading(true);
+  try{
+    // 1. Inspect the source sheet (READ ONLY)
+    const meta=await gapi.client.sheets.spreadsheets.get({spreadsheetId:KAKEDA_SOURCE_SHEET_ID});
+    const sheetNames=meta.result.sheets.map(s=>s.properties.title);
+    const monthTabs=sheetNames.filter(n=>/^[A-Za-z]{3}_\d{4}$/.test(n));
+    const hasVendorList=sheetNames.includes('VENDOR_LIST');
+    const hasIndex=sheetNames.includes('INDEX');
+    const hasSettings=sheetNames.includes('SETTINGS');
+
+    const restName='Kakeda Hotel, Jail Road';
+    const restAddress='Jail Road';
+
+    // 2. Create new sheet for Kakeda inside Eatss (this is the ONLY sheet written to)
+    const createResp=await gapi.client.sheets.spreadsheets.create({
+      properties:{title:restName+' — MIS Data'}
+    });
+    const newSheetId=createResp.result.spreadsheetId;
+
+    // 3. Rename default Sheet1 → SETTINGS, write restaurant name/address
+    const newMeta=await gapi.client.sheets.spreadsheets.get({spreadsheetId:newSheetId});
+    const firstSheetId=newMeta.result.sheets[0].properties.sheetId;
+    await gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId:newSheetId,
+      resource:{requests:[{updateSheetProperties:{properties:{sheetId:firstSheetId,title:'SETTINGS'},fields:'title'}}]}
+    });
+    let settingsValues=[['Restaurant Name','Address'],[restName,restAddress]];
+    if(hasSettings){
+      const sRows=await sourceGet(KAKEDA_SOURCE_SHEET_ID,'SETTINGS!A1:B10');
+      if(sRows.length) settingsValues=sRows;
+    }
+    await gapi.client.request({
+      path:`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/${encodeURIComponent('SETTINGS!A1')}`,
+      method:'PUT', params:{valueInputOption:'RAW'}, body:JSON.stringify({range:'SETTINGS!A1',values:settingsValues})
+    });
+
+    // 4. Copy VENDOR_LIST — apply payment-type rule:
+    //    Sadik Trading → Calendar Periods (1-10/11-20/21-End), everyone else → Weekly
+    if(hasVendorList){
+      const vRows=await sourceGet(KAKEDA_SOURCE_SHEET_ID,'VENDOR_LIST!A1');
+      let vendorList=[];
+      if(vRows.length&&vRows[0][0]){
+        try{ vendorList=JSON.parse(vRows[0][0]); }catch(e){ vendorList=[]; }
+      }
+      // Normalise + assign payment types
+      vendorList=vendorList.map(v=>{
+        const obj=(typeof v==='string')?{name:v,active:true}:{...v};
+        obj.paymentType = (obj.name==='Sadik Trading')
+          ? 'Calendar Periods (1-10/11-20/21-End)'
+          : 'Weekly';
+        return obj;
+      });
+      await gapi.client.sheets.spreadsheets.batchUpdate({
+        spreadsheetId:newSheetId,
+        resource:{requests:[{addSheet:{properties:{title:'VENDOR_LIST'}}}]}
+      });
+      await gapi.client.request({
+        path:`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/${encodeURIComponent('VENDOR_LIST!A1')}`,
+        method:'PUT', params:{valueInputOption:'RAW'}, body:JSON.stringify({range:'VENDOR_LIST!A1',values:[[JSON.stringify(vendorList)]]})
+      });
+    }
+
+    // 5. Copy each month tab's data (read from Kakeda source, write to new sheet)
+    for(const tab of monthTabs){
+      const rows=await sourceGet(KAKEDA_SOURCE_SHEET_ID,`${tab}!A1`);
+      if(!rows.length||!rows[0][0]) continue;
+      await gapi.client.sheets.spreadsheets.batchUpdate({
+        spreadsheetId:newSheetId,
+        resource:{requests:[{addSheet:{properties:{title:tab}}}]}
+      });
+      await gapi.client.request({
+        path:`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/${encodeURIComponent(tab+'!A1')}`,
+        method:'PUT', params:{valueInputOption:'RAW'}, body:JSON.stringify({range:tab+'!A1',values:rows})
+      });
+    }
+
+    // 6. Copy INDEX
+    if(hasIndex){
+      const iRows=await sourceGet(KAKEDA_SOURCE_SHEET_ID,'INDEX!A1:E100');
+      if(iRows.length){
+        await gapi.client.sheets.spreadsheets.batchUpdate({
+          spreadsheetId:newSheetId,
+          resource:{requests:[{addSheet:{properties:{title:'INDEX'}}}]}
+        });
+        await gapi.client.request({
+          path:`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/${encodeURIComponent('INDEX!A1')}`,
+          method:'PUT', params:{valueInputOption:'RAW'}, body:JSON.stringify({range:'INDEX!A1',values:iRows})
+        });
+      }
+    }
+
+    // 7. Register restaurant + admin access in Eatss Master Registry
+    const restId='R'+Date.now();
+    const rRows=await masterGet('RESTAURANTS!A2:E100');
+    const newRow=rRows.length+2;
+    await masterUpdate(`RESTAURANTS!A${newRow}:E${newRow}`,
+      [[restId,restName,restAddress,newSheetId,new Date().toLocaleDateString('en-IN')]]);
+    for(const adminEmail of ADMIN_EMAILS){
+      const aRows=await masterGet('ACCESS!A2:D500');
+      const accRow=aRows.length+2;
+      await masterUpdate(`ACCESS!A${accRow}:D${accRow}`,[[adminEmail.toLowerCase(),restId,'admin',new Date().toLocaleDateString('en-IN')]]);
+    }
+
+    toast('Kakeda Hotel data migrated successfully ✓ (original sheet untouched)','success');
+    document.getElementById('kakeda-migration-section').style.display='none';
+    await enterRestaurant({id:restId,name:restName,address:restAddress,sheetId:newSheetId,created:new Date().toLocaleDateString('en-IN')});
+  }catch(e){
+    console.error('migrateKakedaHotel error',e);
+    toast('Migration failed: '+(e.result?.error?.message||e.message||'unknown error'),'error');
+    loading(false);
+  }
+}
+
 async function migrateExistingData(){
   if(!confirm('This will create a new Google Sheet for the detected existing data and copy all month data and vendor list into it. You will be prompted for a restaurant name. Continue?')) return;
   loading(true);
