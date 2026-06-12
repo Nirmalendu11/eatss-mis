@@ -869,7 +869,6 @@ async function onSignedIn(){
         document.getElementById('picker-title').textContent='Select Restaurant';
         document.getElementById('picker-subtitle').innerHTML='Signed in as Admin (<b>'+userEmail+'</b>). Choose a restaurant to manage, or set up a new one.';
         await loadAllRestaurants();
-        document.getElementById('admin-email-display').textContent=userEmail;
         showScreen('restaurant-picker-screen');
       }catch(e2){
         throw new Error('Could not load restaurant registry: '+(e2.result?.error?.message||e2.message));
@@ -894,7 +893,6 @@ async function onSignedIn(){
     }
     // Multiple restaurants — show a restricted picker (no "Set Up New", no migration)
     allRestaurants=myRests;
-    document.getElementById('admin-email-display').textContent=userEmail;
     document.querySelectorAll('#restaurant-picker-screen .admin-only').forEach(e=>e.style.display='none');
     document.getElementById('picker-title').textContent='Select Restaurant';
     document.getElementById('picker-subtitle').innerHTML='Signed in as <b>'+userEmail+'</b>. You have access to '+myRests.length+' restaurants.';
@@ -1164,7 +1162,6 @@ async function backToPicker(){
   document.querySelectorAll('#main .screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('topbar').style.display='none';
   document.getElementById('nav').style.display='none';
-  document.getElementById('admin-email-display').textContent=userEmail;
   if(isAdmin){
     document.querySelectorAll('#restaurant-picker-screen .admin-only').forEach(e=>e.style.display='');
     document.getElementById('picker-title').textContent='Select Restaurant';
