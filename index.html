@@ -1046,21 +1046,29 @@ async function createRestaurant(){
     });
     const newSheetId=createResp.result.spreadsheetId;
 
-    // 2. Initialise basic structure in the new sheet
+    // 2. Rename the default "Sheet1" tab to "SETTINGS" (new sheets only have Sheet1, no SETTINGS tab)
+    const newMeta=await gapi.client.sheets.spreadsheets.get({spreadsheetId:newSheetId});
+    const firstSheetId=newMeta.result.sheets[0].properties.sheetId;
+    await gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId:newSheetId,
+      resource:{requests:[{updateSheetProperties:{properties:{sheetId:firstSheetId,title:'SETTINGS'},fields:'title'}}]}
+    });
+
+    // 3. Write restaurant name/address into SETTINGS
     await gapi.client.request({
       path:`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/${encodeURIComponent('SETTINGS!A1')}`,
       method:'PUT', params:{valueInputOption:'RAW'},
       body:JSON.stringify({range:'SETTINGS!A1',values:[['Restaurant Name','Address'],[name,address]]})
     });
 
-    // 3. Register in MASTER RESTAURANTS tab
+    // 4. Register in MASTER RESTAURANTS tab
     const restId='R'+Date.now();
     const rRows=await masterGet('RESTAURANTS!A2:E100');
     const newRow=rRows.length+2;
     await masterUpdate(`RESTAURANTS!A${newRow}:E${newRow}`,
       [[restId,name,address,newSheetId,new Date().toLocaleDateString('en-IN')]]);
 
-    // 4. Add access emails
+    // 5. Add access emails
     const emails=emailsRaw.split(',').map(e=>e.trim().toLowerCase()).filter(e=>e);
     if(emails.length){
       const aRows=await masterGet('ACCESS!A2:D500');
@@ -1073,7 +1081,7 @@ async function createRestaurant(){
     await enterRestaurant({id:restId,name,address,sheetId:newSheetId,created:new Date().toLocaleDateString('en-IN')});
   }catch(e){
     console.error('createRestaurant error',e);
-    toast('Failed to create restaurant: '+e.message,'error');
+    toast('Failed to create restaurant: '+(e.result?.error?.message||e.message||'unknown error'),'error');
     loading(false);
   }
 }
