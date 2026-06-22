@@ -19,9 +19,9 @@
 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Eatss MIS Reporting</title>
+<link rel="icon" type="image/png" href="Eatss_favicon_32.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-<link rel="icon" type="image/png" href="Eatss_favicon_32.png">
   /* ── FONTS ── */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 
@@ -214,7 +214,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg-g
 }
 
 /* ── TABLES ── */
-.tbl-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
 table { border-collapse: collapse; width: 100%; min-width: 600px; }
 thead tr { background: var(--surface3); }
 th { padding: 12px 10px; font-size: 13px; font-weight: 600; color: var(--text2); text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; letter-spacing: .3px; text-transform: uppercase; }
@@ -1880,6 +1880,16 @@ async function saveVendorList(){
     await sheetsUpdate('VENDOR_LIST!A1',[[JSON.stringify(vendorMasterList)]]);
     // Update active VENDORS array
     VENDORS=vendorMasterList.filter(v=>v.active!==false).map(v=>v.name);
+    // Inject any brand-new vendors into the current month's data so they
+    // appear immediately in Vendor Purchases and Vendor Payments tables
+    if(data){
+      VENDORS.forEach(v=>{
+        if(!(v in (data.vendorOpening||{}))) data.vendorOpening[v]=0;
+        Object.keys(data.vendorPurchases||{}).forEach(day=>{
+          if(!(v in data.vendorPurchases[day])) data.vendorPurchases[day][v]=0;
+        });
+      });
+    }
     toast('Vendor list saved ✓','success');
     renderVendors();
     renderVendorPayments();
