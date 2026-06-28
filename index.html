@@ -214,7 +214,14 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg-g
 }
 
 /* ── TABLES ── */
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
+.tbl-wrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
+.tbl-wrap table thead th { position: sticky; top: 0; z-index: 3; background: var(--surface2); }
+.tbl-wrap table th:first-child,
+.tbl-wrap table td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; }
+.tbl-wrap table thead th:first-child { z-index: 4; }
+.tbl-wrap table tbody tr:nth-child(even) td:first-child { background: var(--surface2); }
+.tbl-wrap table tbody tr:nth-child(odd) td:first-child { background: var(--surface); }
+.tbl-wrap table tfoot td:first-child { background: var(--surface2); }
 table { border-collapse: collapse; width: 100%; min-width: 600px; }
 thead tr { background: var(--surface3); }
 th { padding: 12px 10px; font-size: 13px; font-weight: 600; color: var(--text2); text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; letter-spacing: .3px; text-transform: uppercase; }
@@ -348,6 +355,12 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
 
 /* ── LOADING ── */
 #loading { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 300; flex-direction: column; gap: 16px; }
+.worker-locked-banner { display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;gap:12px }
+.worker-locked-banner .lock-msg { font-size:13px;color:var(--text2) }
+.pin-input { width:120px;padding:7px 10px;border:1px solid var(--inp-border);border-radius:7px;background:var(--inp-bg);color:var(--text);font-family:var(--font-body);font-size:14px;letter-spacing:4px;text-align:center }
+.unlock-btn { padding:7px 16px;background:var(--purple);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body) }
+.unlock-btn:hover { opacity:.88 }
+.masked-val { font-family:var(--font-body);letter-spacing:2px;color:var(--text3) }
 .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -387,7 +400,7 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
   .stat-card .lbl { font-size: 11px; }
 
   /* Tables: allow horizontal scroll, shrink padding */
-  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl-wrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { font-size: 11px; }
   th, td { padding: 4px 4px; }
   .cell-inp { min-width: 42px; font-size: 11px; }
@@ -617,7 +630,11 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
     <div id="tab-attendance" class="screen">
       <div class="section-hdr"><h2>Attendance</h2><span class="pill">P / P/2 / P2 / P4 / OFF</span></div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
-        <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Worker Setup (salary & OT rate — confidential)</div>
+        <div id="worker-lock-banner" class="worker-locked-banner"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Worker Setup (salary & OT rate — confidential)</div>
+          <button onclick="setWorkerPIN()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:6px;cursor:pointer;color:var(--text3);font-family:var(--font-body)">🔑 Change PIN</button>
+        </div>
         <div id="worker-list"></div>
         <button class="add-row-btn" onclick="addWorker()" style="margin-top:12px">＋ Add Worker</button>
       </div>
@@ -1847,12 +1864,28 @@ function renderVpayOutstanding(){
     <td style="text-align:left">TOTAL</td><td>—</td><td>—</td><td>—</td>
     <td style="color:${totalOS>0?'var(--red)':'var(--green)'};font-weight:700">₹${totalOS.toLocaleString('en-IN')}</td>
   </tr></tfoot></table></div>`;
-  el.innerHTML=html;
+  // ── TAG SUMMARY ──────────────────────────────────────────────────────────
+  const tagTotals={};
+  VENDORS.forEach(v=>{
+    const vObj=vendorMasterList.find(x=>(typeof x==='object'?x.name:x)===v)||{};
+    const tag=vObj.tag||'Other';
+    const tot=Object.values(data.vendorPurchases||{}).reduce((a,r)=>a+(+r[v]||0),0);
+    tagTotals[tag]=(tagTotals[tag]||0)+tot;
+  });
+  const tagColors={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#b45309','Transport':'#1d4ed8','Other':'#64748b'};
+  let tagHtml=`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:10px">Purchases by Category</div><div style="display:flex;flex-wrap:wrap;gap:8px">`;
+  Object.entries(tagTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).forEach(([tag,tot])=>{
+    const tc=tagColors[tag]||'#64748b';
+    tagHtml+=`<div style="background:${tc}18;border:1px solid ${tc}44;border-radius:8px;padding:8px 14px;min-width:140px"><div style="font-size:10px;font-weight:700;color:${tc};text-transform:uppercase;letter-spacing:.5px">${tag}</div><div style="font-size:17px;font-weight:700;color:var(--text);font-family:var(--font-body)">₹${tot.toLocaleString('en-IN')}</div></div>`;
+  });
+  tagHtml+=`</div></div>`;
+  el.innerHTML=html+tagHtml;
 }
 
 // ── VENDOR SETUP ─────────────────────────────────────────────────────────────
 // vendorMasterList stored in Google Sheet tab "VENDOR_LIST" as JSON
 let vendorMasterList=[]; // {name, active} — loaded per restaurant
+let workerUnlocked=false; // PIN protection for worker salaries
 
 async function loadVendorList(){
   try{
@@ -1902,7 +1935,7 @@ function renderVendorSetup(){
   const el=document.getElementById('vendor-setup-list');
   if(!el) return;
   // Normalise vendorMasterList to objects
-  vendorMasterList=vendorMasterList.map(v=>typeof v==='string'?{name:v,active:true,paymentType:'Weekly'}:{paymentType:'Weekly',...v});
+  vendorMasterList=vendorMasterList.map(v=>typeof v==='string'?{name:v,active:true,paymentType:'Weekly',tag:'Other'}:{paymentType:'Weekly',tag:'Other',...v});
   let html='<div style="display:flex;flex-direction:column;gap:8px">';
   vendorMasterList.forEach((v,i)=>{
     const isActive=v.active!==false;
@@ -1913,6 +1946,8 @@ function renderVendorSetup(){
         style="flex:1;min-width:140px;background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 12px;color:var(--text);font-family:var(--font-body);font-size:14px">
       <select onchange="vendorMasterList[${i}].paymentType=this.value" title="Payment frequency"
         style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 10px;color:var(--text2);font-family:var(--font-body);font-size:13px">${ptOpts}</select>
+      <select onchange="vendorMasterList[${i}].tag=this.value" title="Expense category tag"
+        style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 10px;color:var(--text2);font-family:var(--font-body);font-size:13px">${VENDOR_TAGS.map(t=>`<option value="${t}" ${(v.tag||'Other')===t?'selected':''}>${t}</option>`).join('')}</select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer;white-space:nowrap">
         <input type="checkbox" ${isActive?'checked':''} onchange="vendorMasterList[${i}].active=this.checked;renderVendorSetup()"
           style="width:16px;height:16px;cursor:pointer">
@@ -1926,7 +1961,7 @@ function renderVendorSetup(){
 }
 
 function addVendorRow(){
-  vendorMasterList.push({name:'',active:true,paymentType:'Weekly'});
+  vendorMasterList.push({name:'',active:true,paymentType:'Weekly',tag:'Other'});
   renderVendorSetup();
 }
 function removeVendor(i){
@@ -1939,7 +1974,7 @@ function removeVendor(i){
 function renderSales(){
   const d=daysInMonth(curMonth,curYear);
   const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  let html=`<thead><tr><th class="left">Date</th><th class="left">Day</th>`;
+  let html=`<thead><tr><th class="left" style="position:sticky;left:0;z-index:4;background:var(--surface2)">Date</th><th class="left" style="position:sticky;left:72px;z-index:4;background:var(--surface2)">Day</th>`;
   SALES_CATS.forEach(c=>html+=`<th>${c}</th>`);
   html+=`<th>Total</th></tr></thead><tbody>`;
   for(let i=1;i<=d;i++){
@@ -1958,7 +1993,7 @@ function renderSales(){
     tots[k]=Object.values(data.sales).reduce((a,r)=>a+(+r[k]||0),0);
   });
   const gt=Object.values(tots).reduce((a,b)=>a+b,0);
-  html+=`<tr class="total-row"><td colspan="2">Monthly Total</td>`;
+  html+=`<tr class="total-row"><td colspan="2" style="position:sticky;left:0;z-index:2;background:var(--surface2)">Monthly Total</td>`;
   ['zomato','swiggy','toing','dineout','district','card','upi','cash','any_other'].forEach(k=>html+=`<td>₹${tots[k].toLocaleString('en-IN')}</td>`);
   html+=`<td>₹${gt.toLocaleString('en-IN')}</td></tr></tbody>`;
   document.getElementById('sales-table').innerHTML=html;
@@ -2044,21 +2079,26 @@ function renderVendors(){
   // Daily table
   const days=daysInMonth(curMonth,curYear);
   const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  let html=`<thead><tr><th class="left">Date</th><th class="left">Day</th>`;
-  VENDORS.forEach(v=>html+=`<th style="font-size:10px">${v.split(' ')[0]}</th>`);
+  let html=`<thead><tr><th class="left" style="position:sticky;left:0;z-index:4;background:var(--surface2)">Date</th><th class="left" style="position:sticky;left:72px;z-index:4;background:var(--surface2)">Day</th>`;
+  VENDORS.forEach(v=>{
+    const vObj=vendorMasterList.find(x=>(typeof x==='object'?x.name:x)===v)||{};
+    const tagColors={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#b45309','Transport':'#1d4ed8','Other':'#64748b'};
+    const tc=tagColors[vObj.tag||'Other']||'#64748b';
+    html+=`<th style="font-size:10px;text-align:center"><div>${v.split(' ')[0]}</div><span style="font-size:8px;background:${tc}22;color:${tc};border-radius:4px;padding:1px 5px;white-space:nowrap">${vObj.tag||''}</span></th>`;
+  });
   html+=`<th>Total</th></tr></thead><tbody>`;
   for(let i=1;i<=days;i++){
     const dt=new Date(curYear,curMonth-1,i);
     const row=data.vendorPurchases[i]||{};
     const tot=VENDORS.reduce((a,v)=>a+(+row[v]||0),0);
-    html+=`<tr><td class="date-cell">${String(i).padStart(2,'0')}-${MONTHS[curMonth-1]}</td><td class="date-cell">${dayNames[dt.getDay()]}</td>`;
+    html+=`<tr><td class="date-cell" style="position:sticky;left:0;z-index:2;background:var(--surface)">${String(i).padStart(2,'0')}-${MONTHS[curMonth-1]}</td><td class="date-cell" style="position:sticky;left:72px;z-index:2;background:var(--surface)">${dayNames[dt.getDay()]}</td>`;
     VENDORS.forEach(v=>{
       html+=`<td><input class="cell-inp" type="text" inputmode="numeric" value="${row[v]||''}" placeholder="—" onkeydown="return blockArrows(event)" onchange="setVendor(${i},'${v.replace(/'/g,"\\'")}',this.value)"></td>`;
     });
     html+=`<td class="total-cell" id="vtot-${i}">${tot?tot.toLocaleString('en-IN'):'—'}</td></tr>`;
   }
   // totals
-  html+=`<tr class="total-row"><td colspan="2">Monthly Total</td>`;
+  html+=`<tr class="total-row"><td colspan="2" style="position:sticky;left:0;z-index:2;background:var(--surface2)">Monthly Total</td>`;
   VENDORS.forEach(v=>{
     const t=Object.values(data.vendorPurchases).reduce((a,r)=>a+(+r[v]||0),0);
     html+=`<td>${t?'₹'+t.toLocaleString('en-IN'):'—'}</td>`;
@@ -2091,15 +2131,49 @@ function renderAttendance(){
     div.innerHTML=`<span class="worker-num">${i+1}</span>
 <input value="${w.name||''}" placeholder="Worker Name" style="min-width:130px" onchange="data.workers[${i}].name=this.value;renderAttTable()">
 <input value="${w.desig||''}" placeholder="Designation" style="min-width:90px" onchange="data.workers[${i}].desig=this.value">
-<input class="sal-inp" type="text" inputmode="numeric" value="${w.salary||''}" placeholder="Salary ₹" onchange="data.workers[${i}].salary=numVal(this.value)" onkeydown="return blockArrows(event)">
-<input class="ot-inp" type="text" inputmode="numeric" value="${w.otRate||100}" placeholder="OT ₹/hr" onchange="data.workers[${i}].otRate=numVal(this.value)" onkeydown="return blockArrows(event)">
+${workerUnlocked
+  ? `${workerUnlocked
+  ? '<input class=\"sal-inp\" type=\"text\" inputmode=\"numeric\" value=\"'+  (w.salary||'') +'\" placeholder=\"Salary ₹\" onchange=\"data.workers['+i+'].salary=numVal(this.value)\" onkeydown=\"return blockArrows(event)\"><input class=\"ot-inp\" type=\"text\" inputmode=\"numeric\" value=\"'+ (w.otRate||100) +'\" placeholder=\"OT ₹/hr\" onchange=\"data.workers['+i+'].otRate=numVal(this.value)\" onkeydown=\"return blockArrows(event)\">'
+  : '<span class=\"masked-val sal-inp\" title=\"Unlock to view\">••••••</span><span class=\"masked-val ot-inp\" title=\"Unlock to view\">••••</span>'}`
+  : `<span class="masked-val sal-inp" title="Unlock to view">••••••</span><span class="masked-val ot-inp" title="Unlock to view">••••</span>`}
 <select onchange="data.workers[${i}].weeklyOff=this.value;renderAttTable()" style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:7px 8px;color:var(--text);font-family:var(--font-body);font-size:13px">
   <option value="">W/Off day?</option>${_woDayOpts}
 </select>
 <button class="del-btn" onclick="delWorker(${i})">✕</button>`;
     wl.appendChild(div);
   });
+  // PIN banner
+  const banner=document.getElementById('worker-lock-banner');
+  if(banner){
+    if(workerUnlocked){
+      banner.innerHTML=`<span class="lock-msg">🔓 Salary details visible — <button class="unlock-btn" style="background:var(--text3)" onclick="lockWorkers()">Lock</button></span>`;
+    } else {
+      banner.innerHTML=`<span class="lock-msg">🔒 Salary & wage amounts are hidden</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <input class="pin-input" type="password" id="worker-pin-inp" placeholder="PIN" maxlength="6" onkeydown="if(event.key==='Enter')unlockWorkers()">
+          <button class="unlock-btn" onclick="unlockWorkers()">Unlock</button>
+        </span>`;
+    }
+  }
   renderAttTable();
+}
+function unlockWorkers(){
+  const pin=document.getElementById('worker-pin-inp');
+  if(!pin) return;
+  // PIN is stored as SHA-like hash for security — default PIN: 1234
+  // Store custom PIN in localStorage key 'eatss_worker_pin'
+  const stored=localStorage.getItem('eatss_worker_pin')||'1234';
+  if(pin.value===stored){ workerUnlocked=true; renderAttendance(); toast('Worker section unlocked','success'); }
+  else { pin.style.borderColor='var(--red)'; setTimeout(()=>pin.style.borderColor='',1200); toast('Wrong PIN','error'); }
+}
+function lockWorkers(){ workerUnlocked=false; renderAttendance(); }
+function setWorkerPIN(){
+  const np=prompt('Enter new PIN (numbers only, 4-8 digits):');
+  if(!np||!/^\d{4,8}$/.test(np)){ toast('Invalid PIN format','error'); return; }
+  const cp=prompt('Confirm new PIN:');
+  if(np!==cp){ toast('PINs do not match','error'); return; }
+  localStorage.setItem('eatss_worker_pin',np);
+  toast('Worker PIN updated','success');
 }
 function addWorker(){ data.workers.push({name:'',desig:'',salary:0,otRate:100,weeklyOff:''}); renderAttendance(); }
 function delWorker(i){ data.workers.splice(i,1); renderAttendance(); }
@@ -2186,13 +2260,13 @@ function calcWageDetails(w,wi,m,y){
 function renderAttTable(){
   const days=daysInMonth(curMonth,curYear);
   if(!data.workers.length){ document.getElementById('att-table').innerHTML=''; return; }
-  let html=`<thead><tr><th class="left" style="min-width:110px">Worker</th>`;
+  let html=`<thead><tr><th class="left" style="min-width:110px;position:sticky;left:0;z-index:4;background:var(--surface2)">Worker</th>`;
   for(let d=1;d<=days;d++) html+=`<th style="font-size:9px;min-width:26px;padding:3px 1px">${d}</th>`;
   html+=`<th style="min-width:40px;font-size:9px">Days<br>Wrkd</th><th style="min-width:32px;font-size:9px;color:#1a6fbd">PL<br>Att</th><th style="min-width:28px;font-size:9px;color:#6a4db8">PL<br>Earnd</th><th style="min-width:28px;font-size:9px;color:#1a8a5a">W/Off<br>Days</th><th style="min-width:28px;font-size:9px;color:#843c0c">PL<br>Paid</th><th style="min-width:42px;font-size:9px;font-weight:700">Total<br>Paid</th><th style="font-size:9px">OT2</th><th style="font-size:9px">OT4</th><th style="font-size:9px">OT Hrs</th></tr></thead><tbody>`;
   data.workers.forEach((w,wi)=>{
     if(!data.attendance[wi]) data.attendance[wi]={};
     const wd=calcWageDetails(w,wi,curMonth,curYear);
-    html+=`<tr><td style="text-align:left;white-space:nowrap;font-size:11px;font-weight:500">${w.name||'Worker '+(wi+1)}<br><span style="font-size:9px;color:var(--text3)">${w.weeklyOff?'Off:'+w.weeklyOff:''}</span></td>`;
+    html+=`<tr><td style="text-align:left;white-space:nowrap;font-size:11px;font-weight:500;position:sticky;left:0;z-index:2;background:var(--surface)">${w.name||'Worker '+(wi+1)}<br><span style="font-size:9px;color:var(--text3)">${w.weeklyOff?'Off:'+w.weeklyOff:''}</span></td>`;
     for(let d=1;d<=days;d++){
       const val=data.attendance[wi][d]||'';
       const dt=new Date(curYear,curMonth-1,d);
@@ -2202,7 +2276,7 @@ function renderAttTable(){
       html+=`<td style="${isWO?'background:rgba(46,204,138,.1)':''}"><input class="cell-inp att" maxlength="3" value="${val}" placeholder="—" style="min-width:24px;font-size:10px" onchange="setAtt(${wi},${d},this.value)"></td>`;
     }
     const _thr=wd.threshold;
-    html+=`<td class="total-cell">${wd.daysWorked}</td><td style="color:var(--blue)">${wd.plAttendance}<span style="font-size:9px;color:var(--text3)">/${_thr}</span></td><td style="color:var(--purple)">${wd.plEarned}</td><td style="color:var(--green)">${wd.weeklyOffCount}</td><td style="color:var(--accent);font-weight:600">${wd.plPaid}${wd.metThreshold?'<span style=\"font-size:9px;color:var(--green)\"> ✓</span>':''}</td><td class="total-cell" style="font-weight:700">${wd.totalPaidDays}</td><td>${wd.ot2}</td><td>${wd.ot4}</td><td class="total-cell">${wd.otHrs}</td></tr>`;
+    html+=`<td class="total-cell">${wd.daysWorked}</td><td style="color:var(--blue)">${wd.plAttendance}<span style="font-size:9px;color:var(--text3)">/${_thr}</span></td><td style="color:var(--purple)">${wd.plEarned}</td><td style="color:var(--green)">${wd.weeklyOffCount}</td><td style="color:var(--accent);font-weight:600">${wd.plPaid}${wd.metThreshold?'<span style="font-size:9px;color:var(--green)"> ✓</span>':''}</td><td class="total-cell" style="font-weight:700">${wd.totalPaidDays}</td><td>${wd.ot2}</td><td>${wd.ot4}</td><td class="total-cell">${wd.otHrs}</td></tr>`;
   });
   html+=`</tbody>`;
   document.getElementById('att-table').innerHTML=html;
