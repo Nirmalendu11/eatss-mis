@@ -1872,7 +1872,7 @@ function renderVpayOutstanding(){
     const tot=Object.values(data.vendorPurchases||{}).reduce((a,r)=>a+(+r[v]||0),0);
     tagTotals[tag]=(tagTotals[tag]||0)+tot;
   });
-  const tagColors={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#b45309','Transport':'#1d4ed8','Other':'#64748b'};
+  const tagColors=VENDOR_TAG_COLORS;
   let tagHtml=`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:10px">Purchases by Category</div><div style="display:flex;flex-wrap:wrap;gap:8px">`;
   Object.entries(tagTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).forEach(([tag,tot])=>{
     const tc=tagColors[tag]||'#64748b';
@@ -1930,13 +1930,24 @@ async function saveVendorList(){
 }
 
 const PAYMENT_TYPES=['Weekly','Fortnightly (1-15 / 16-End)','Monthly','Calendar Periods (1-10/11-20/21-End)','Custom'];
+const VENDOR_TAGS=['Raw Material','Dairy','Beverages','Packaging','Cleaning','Repairs & Maintenance','Utilities','Transport','Other'];
+const VENDOR_TAG_COLORS={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#ea580c','Transport':'#1d4ed8','Other':'#64748b'};
 
 function renderVendorSetup(){
   const el=document.getElementById('vendor-setup-list');
   if(!el) return;
   // Normalise vendorMasterList to objects
   vendorMasterList=vendorMasterList.map(v=>typeof v==='string'?{name:v,active:true,paymentType:'Weekly',tag:'Other'}:{paymentType:'Weekly',tag:'Other',...v});
-  let html='<div style="display:flex;flex-direction:column;gap:8px">';
+
+  // Bulk tag assignment banner — shown when any vendor has no tag or tag='Other'
+  const untagged=vendorMasterList.filter(v=>!v.tag||v.tag==='Other');
+  const bulkBanner = untagged.length
+    ? `<div style="background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text2)">💡 <b>${untagged.length}</b> vendor${untagged.length>1?'s have':' has'} no category tag. Assign tags below to enable expense grouping.</span>
+        <button onclick="bulkAssignTags()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">Quick Assign Tags</button>
+      </div>` : '';
+
+  let html=bulkBanner+'<div style="display:flex;flex-direction:column;gap:8px">';
   vendorMasterList.forEach((v,i)=>{
     const isActive=v.active!==false;
     const ptOpts=PAYMENT_TYPES.map(p=>`<option value="${p}" ${(v.paymentType||'Weekly')===p?'selected':''}>${p}</option>`).join('');
@@ -1963,6 +1974,50 @@ function renderVendorSetup(){
 function addVendorRow(){
   vendorMasterList.push({name:'',active:true,paymentType:'Weekly',tag:'Other'});
   renderVendorSetup();
+}
+
+function bulkAssignTags(){
+  // Open a modal-style overlay to assign tags to all vendors at once
+  const overlay=document.createElement('div');
+  overlay.id='bulk-tag-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const rows=vendorMasterList.map((v,i)=>{
+    const opts=VENDOR_TAGS.map(t=>`<option value="${t}" ${(v.tag||'Other')===t?'selected':''}>${t}</option>`).join('');
+    const tc=VENDOR_TAG_COLORS[v.tag||'Other']||'#64748b';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="min-width:160px;font-size:14px;font-weight:500;color:var(--text)">${v.name||'(unnamed)'}</span>
+      <select id="btag-${i}" onchange="document.getElementById('btag-pill-${i}').style.background=VENDOR_TAG_COLORS[this.value]+'22';document.getElementById('btag-pill-${i}').style.color=VENDOR_TAG_COLORS[this.value];document.getElementById('btag-pill-${i}').textContent=this.value"
+        style="flex:1;background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--font-body);font-size:13px">${opts}</select>
+      <span id="btag-pill-${i}" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;background:${tc}22;color:${tc}">${v.tag||'Other'}</span>
+    </div>`;
+  }).join('');
+  overlay.innerHTML=`
+    <div style="background:var(--surface);border-radius:16px;padding:28px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column;gap:0;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--text)">Assign Vendor Categories</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">Tag each vendor to group purchases in reports</div>
+        </div>
+        <button onclick="document.getElementById('bulk-tag-overlay').remove()" style="background:var(--surface2);border:none;border-radius:8px;width:32px;height:32px;font-size:18px;cursor:pointer;color:var(--text3)">×</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;padding-right:4px">${rows}</div>
+      <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('bulk-tag-overlay').remove()" style="padding:9px 20px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer;color:var(--text2);font-family:var(--font-body)">Cancel</button>
+        <button onclick="saveBulkTags()" style="padding:9px 24px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">Save Tags</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function saveBulkTags(){
+  vendorMasterList.forEach((_,i)=>{
+    const sel=document.getElementById('btag-'+i);
+    if(sel) vendorMasterList[i].tag=sel.value;
+  });
+  document.getElementById('bulk-tag-overlay').remove();
+  renderVendorSetup();
+  renderVendorPayments();
+  toast('Vendor tags saved — click Save Vendor List to persist','success');
 }
 function removeVendor(i){
   if(!confirm('Remove this vendor permanently from the list?')) return;
@@ -2082,8 +2137,7 @@ function renderVendors(){
   let html=`<thead><tr><th class="left" style="position:sticky;left:0;z-index:4;background:var(--surface2)">Date</th><th class="left" style="position:sticky;left:72px;z-index:4;background:var(--surface2)">Day</th>`;
   VENDORS.forEach(v=>{
     const vObj=vendorMasterList.find(x=>(typeof x==='object'?x.name:x)===v)||{};
-    const tagColors={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#b45309','Transport':'#1d4ed8','Other':'#64748b'};
-    const tc=tagColors[vObj.tag||'Other']||'#64748b';
+    const tc=VENDOR_TAG_COLORS[vObj.tag||'Other']||'#64748b';
     html+=`<th style="font-size:10px;text-align:center"><div>${v.split(' ')[0]}</div><span style="font-size:8px;background:${tc}22;color:${tc};border-radius:4px;padding:1px 5px;white-space:nowrap">${vObj.tag||''}</span></th>`;
   });
   html+=`<th>Total</th></tr></thead><tbody>`;
@@ -2131,11 +2185,8 @@ function renderAttendance(){
     div.innerHTML=`<span class="worker-num">${i+1}</span>
 <input value="${w.name||''}" placeholder="Worker Name" style="min-width:130px" onchange="data.workers[${i}].name=this.value;renderAttTable()">
 <input value="${w.desig||''}" placeholder="Designation" style="min-width:90px" onchange="data.workers[${i}].desig=this.value">
-${workerUnlocked
-  ? `${workerUnlocked
-  ? '<input class=\"sal-inp\" type=\"text\" inputmode=\"numeric\" value=\"'+  (w.salary||'') +'\" placeholder=\"Salary ₹\" onchange=\"data.workers['+i+'].salary=numVal(this.value)\" onkeydown=\"return blockArrows(event)\"><input class=\"ot-inp\" type=\"text\" inputmode=\"numeric\" value=\"'+ (w.otRate||100) +'\" placeholder=\"OT ₹/hr\" onchange=\"data.workers['+i+'].otRate=numVal(this.value)\" onkeydown=\"return blockArrows(event)\">'
-  : '<span class=\"masked-val sal-inp\" title=\"Unlock to view\">••••••</span><span class=\"masked-val ot-inp\" title=\"Unlock to view\">••••</span>'}`
-  : `<span class="masked-val sal-inp" title="Unlock to view">••••••</span><span class="masked-val ot-inp" title="Unlock to view">••••</span>`}
+<input class="sal-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.salary||''):'••••••'}" placeholder="Salary ₹" ${workerUnlocked?`onchange="data.workers[${i}].salary=numVal(this.value)" onkeydown="return blockArrows(event)"`:'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
+<input class="ot-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.otRate||100):'••••'}" placeholder="OT ₹" ${workerUnlocked?`onchange="data.workers[${i}].otRate=numVal(this.value)" onkeydown="return blockArrows(event)"`:'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
 <select onchange="data.workers[${i}].weeklyOff=this.value;renderAttTable()" style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:7px 8px;color:var(--text);font-family:var(--font-body);font-size:13px">
   <option value="">W/Off day?</option>${_woDayOpts}
 </select>
@@ -2261,8 +2312,9 @@ function renderAttTable(){
   const days=daysInMonth(curMonth,curYear);
   if(!data.workers.length){ document.getElementById('att-table').innerHTML=''; return; }
   let html=`<thead><tr><th class="left" style="min-width:110px;position:sticky;left:0;z-index:4;background:var(--surface2)">Worker</th>`;
-  for(let d=1;d<=days;d++) html+=`<th style="font-size:9px;min-width:26px;padding:3px 1px">${d}</th>`;
-  html+=`<th style="min-width:40px;font-size:9px">Days<br>Wrkd</th><th style="min-width:32px;font-size:9px;color:#1a6fbd">PL<br>Att</th><th style="min-width:28px;font-size:9px;color:#6a4db8">PL<br>Earnd</th><th style="min-width:28px;font-size:9px;color:#1a8a5a">W/Off<br>Days</th><th style="min-width:28px;font-size:9px;color:#843c0c">PL<br>Paid</th><th style="min-width:42px;font-size:9px;font-weight:700">Total<br>Paid</th><th style="font-size:9px">OT2</th><th style="font-size:9px">OT4</th><th style="font-size:9px">OT Hrs</th></tr></thead><tbody>`;
+  for(let d=1;d<=days;d++) html+=`<th style="font-size:9px;min-width:26px;padding:3px 1px;position:sticky;top:0;background:var(--surface2);z-index:3">${d}</th>`;
+  html+=`<th style="min-width:40px;font-size:9px;position:sticky;top:0;background:var(--surface2)">Days<br>Wrkd</th><th style="min-width:32px;font-size:9px;color:#1a6fbd;position:sticky;top:0;background:var(--surface2)">PL<br>Att</th><th style="min-width:28px;font-size:9px;color:#6a4db8;position:sticky;top:0;background:var(--surface2)">PL<br>Earnd</th><th style="min-width:28px;font-size:9px;color:#1a8a5a;position:sticky;top:0;background:var(--surface2)">W/Off<br>Days</th><th style="min-width:28px;font-size:9px;color:#843c0c;position:sticky;top:0;background:var(--surface2)">PL<br>Paid</th><th style="min-width:42px;font-size:9px;font-weight:700;position:sticky;top:0;background:var(--surface2)">Total<br>Paid</th><th style="font-size:9px;position:sticky;top:0;background:var(--surface2)">OT2</th><th style="font-size:9px;position:sticky;top:0;background:var(--surface2)">OT4</th><th style="font-size:9px;position:sticky;top:0;background:var(--surface2)">OT<br>Hrs</th>
+<th style="min-width:70px;font-size:9px;color:#1a6fbd;border-left:2px solid var(--border2);position:sticky;top:0;background:var(--surface2)">Basic<br>Wage</th><th style="min-width:60px;font-size:9px;color:#6a4db8;position:sticky;top:0;background:var(--surface2)">OT<br>Amt</th><th style="min-width:70px;font-size:9px;font-weight:700;position:sticky;top:0;background:var(--surface2)">Gross<br>Pay</th><th style="min-width:60px;font-size:9px;color:#dc2626;position:sticky;top:0;background:var(--surface2)">Advance<br>Ded.</th><th style="min-width:70px;font-size:9px;font-weight:700;color:#15803d;position:sticky;top:0;background:var(--surface2)">Net<br>Pay</th></tr></thead><tbody>`;
   data.workers.forEach((w,wi)=>{
     if(!data.attendance[wi]) data.attendance[wi]={};
     const wd=calcWageDetails(w,wi,curMonth,curYear);
@@ -2276,7 +2328,10 @@ function renderAttTable(){
       html+=`<td style="${isWO?'background:rgba(46,204,138,.1)':''}"><input class="cell-inp att" maxlength="3" value="${val}" placeholder="—" style="min-width:24px;font-size:10px" onchange="setAtt(${wi},${d},this.value)"></td>`;
     }
     const _thr=wd.threshold;
-    html+=`<td class="total-cell">${wd.daysWorked}</td><td style="color:var(--blue)">${wd.plAttendance}<span style="font-size:9px;color:var(--text3)">/${_thr}</span></td><td style="color:var(--purple)">${wd.plEarned}</td><td style="color:var(--green)">${wd.weeklyOffCount}</td><td style="color:var(--accent);font-weight:600">${wd.plPaid}${wd.metThreshold?'<span style="font-size:9px;color:var(--green)"> ✓</span>':''}</td><td class="total-cell" style="font-weight:700">${wd.totalPaidDays}</td><td>${wd.ot2}</td><td>${wd.ot4}</td><td class="total-cell">${wd.otHrs}</td></tr>`;
+    const _mask=v=>`<span style="letter-spacing:2px;color:var(--text3);font-size:10px">••••</span>`;
+    const _wage=v=>workerUnlocked?`₹${v.toLocaleString('en-IN')}`:_mask(v);
+    html+=`<td class="total-cell">${wd.daysWorked}</td><td style="color:var(--blue)">${wd.plAttendance}<span style="font-size:9px;color:var(--text3)">/${_thr}</span></td><td style="color:var(--purple)">${wd.plEarned}</td><td style="color:var(--green)">${wd.weeklyOffCount}</td><td style="color:var(--accent);font-weight:600">${wd.plPaid}${wd.metThreshold?'<span style="font-size:9px;color:var(--green)"> ✓</span>':''}</td><td class="total-cell" style="font-weight:700">${wd.totalPaidDays}</td><td>${wd.ot2}</td><td>${wd.ot4}</td><td class="total-cell">${wd.otHrs}</td>
+<td style="border-left:2px solid var(--border2);text-align:right;font-size:11px;color:#1a6fbd">${_wage(wd.basicWage)}</td><td style="text-align:right;font-size:11px;color:#6a4db8">${_wage(wd.otAmt)}</td><td style="text-align:right;font-size:11px;font-weight:700">${_wage(wd.grossPay)}</td><td style="text-align:right;font-size:11px;color:#dc2626">${_wage(wd.advAmt)}</td><td style="text-align:right;font-size:11px;font-weight:700;color:#15803d">${_wage(wd.netPay)}</td></tr>`;
   });
   html+=`</tbody>`;
   document.getElementById('att-table').innerHTML=html;
