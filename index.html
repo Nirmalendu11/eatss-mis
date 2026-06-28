@@ -214,7 +214,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg-g
 }
 
 /* ── TABLES ── */
-.tbl-wrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
+.tbl-wrap { position: relative; overflow-x: auto; overflow-y: auto; max-height: 70vh; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 28px; }
 .tbl-wrap table thead th { position: sticky; top: 0; z-index: 3; background: var(--surface2); }
 .tbl-wrap table th:first-child,
 .tbl-wrap table td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; }
@@ -400,7 +400,7 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
   .stat-card .lbl { font-size: 11px; }
 
   /* Tables: allow horizontal scroll, shrink padding */
-  .tbl-wrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl-wrap { position: relative; overflow-x: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   table { font-size: 11px; }
   th, td { padding: 4px 4px; }
   .cell-inp { min-width: 42px; font-size: 11px; }
@@ -2028,7 +2028,7 @@ function removeVendor(i){
 // ── SALES TABLE ──────────────────────────────────────────────────────────────
 function renderSales(){
   const d=daysInMonth(curMonth,curYear);
-  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; // JS: 0=Sun,1=Mon,...,6=Sat
   let html=`<thead><tr><th class="left" style="position:sticky;left:0;z-index:4;background:var(--surface2)">Date</th><th class="left" style="position:sticky;left:72px;z-index:4;background:var(--surface2)">Day</th>`;
   SALES_CATS.forEach(c=>html+=`<th>${c}</th>`);
   html+=`<th>Total</th></tr></thead><tbody>`;
@@ -2133,7 +2133,7 @@ function renderVendors(){
   });
   // Daily table
   const days=daysInMonth(curMonth,curYear);
-  const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; // JS: 0=Sun,1=Mon,...,6=Sat
   let html=`<thead><tr><th class="left" style="position:sticky;left:0;z-index:4;background:var(--surface2)">Date</th><th class="left" style="position:sticky;left:72px;z-index:4;background:var(--surface2)">Day</th>`;
   VENDORS.forEach(v=>{
     const vObj=vendorMasterList.find(x=>(typeof x==='object'?x.name:x)===v)||{};
