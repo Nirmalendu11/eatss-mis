@@ -780,6 +780,9 @@ const DISCOVERY   = ['https://sheets.googleapis.com/$discovery/rest?version=v4']
 
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAYS_MAP    = [31,28,31,30,31,30,31,31,30,31,30,31];
+const PAYMENT_TYPES=['Weekly','Fortnightly (1-15 / 16-End)','Monthly','Calendar Periods (1-10/11-20/21-End)','Custom'];
+const VENDOR_TAGS=['Raw Material','Dairy','Beverages','Packaging','Cleaning','Repairs & Maintenance','Utilities','Transport','Other'];
+const VENDOR_TAG_COLORS={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#ea580c','Transport':'#1d4ed8','Other':'#64748b'};
 const DEFAULT_VENDORS = []; // new restaurants start with an empty vendor list
 let VENDORS = []; // mutable — loaded per-restaurant from its own VENDOR_LIST tab
 const SALES_CATS  = ['Zomato','Swiggy','Toing','Dineout','District','Card','UPI','Cash','Any Other'];
@@ -1929,9 +1932,6 @@ async function saveVendorList(){
   }catch(e){ toast('Save failed: '+e.message,'error'); }
 }
 
-const PAYMENT_TYPES=['Weekly','Fortnightly (1-15 / 16-End)','Monthly','Calendar Periods (1-10/11-20/21-End)','Custom'];
-const VENDOR_TAGS=['Raw Material','Dairy','Beverages','Packaging','Cleaning','Repairs & Maintenance','Utilities','Transport','Other'];
-const VENDOR_TAG_COLORS={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#ea580c','Transport':'#1d4ed8','Other':'#64748b'};
 
 function renderVendorSetup(){
   const el=document.getElementById('vendor-setup-list');
