@@ -2266,6 +2266,9 @@ function calcWageDetails(w,wi,m,y){
   const otHrs = ot2*2 + ot4*4;
 
   // Step 2: count weekly off days in this month for this worker
+  // A weekly off day that has a P/P2/P4 entry means the worker actually worked —
+  // that day is counted as a worked day (not a rest day), so it does NOT
+  // contribute to the weekly-off entitlement (Option A).
   let weeklyOffCount=0;
   if(w.weeklyOff){
     const woIdx=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(w.weeklyOff);
@@ -2273,7 +2276,12 @@ function calcWageDetails(w,wi,m,y){
       for(let d=1; d<=totalDays; d++){
         const dt=new Date(y,m-1,d);
         const nd=dt.getDay()===0?6:dt.getDay()-1; // Mon=0..Sun=6
-        if(nd===woIdx) weeklyOffCount++;
+        if(nd===woIdx){
+          // Only count as weekly off if NOT marked as worked
+          const v=(rec[d]||'').toUpperCase().trim();
+          const workedOnWO = (v==='P'||v==='P2'||v==='P4'||v==='P/2');
+          if(!workedOnWO) weeklyOffCount++;
+        }
       }
     }
   }
@@ -2527,19 +2535,19 @@ function renderReports(){
     <tfoot>
     <tr class="total-row" id="payroll-totals-row">
       <td style="text-align:left">TOTALS</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).daysWorked,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).plAttendance,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).plEarned,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).weeklyOffCount,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).plPaid,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).totalPaidDays,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).ot2,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).ot4,0)}</td>
-      <td>${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).otHrs,0)}</td>
-      <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).basicWage,0).toLocaleString('en-IN')}</td>
-      <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).otAmt,0).toLocaleString('en-IN')}</td>
-      <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).advAmt,0).toLocaleString('en-IN')}</td>
-      <td style="color:var(--green);font-weight:700">₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).netPay,0).toLocaleString('en-IN')}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).daysWorked,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plAttendance,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plEarned,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).weeklyOffCount,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plPaid,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).totalPaidDays,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot2,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot4,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otHrs,0)}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).basicWage,0).toLocaleString('en-IN')}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otAmt,0).toLocaleString('en-IN')}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).advAmt,0).toLocaleString('en-IN')}</td>
+      <td style="color:var(--green);font-weight:700">₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).netPay,0).toLocaleString('en-IN')}</td>
     </tr>
     </tfoot>
   </table></div>
