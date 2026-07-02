@@ -2278,16 +2278,35 @@ function calcWageDetails(w,wi,m,y){
     }
   }
 
-  // Step 3: PL Paid — full weekly offs if met threshold, else earned PL
-  const threshold = totalDays - weeklyOffCount; // expected working days
-  let plPaid;
-  if(plAttendance >= threshold){
-    plPaid = weeklyOffCount;           // worked enough → all weekly offs paid
-  } else {
-    plPaid = Math.floor(plAttendance/6); // didn't meet threshold → earned PL only
-  }
-  const plEarned      = Math.floor(plAttendance/6); // shown for info
-  const totalPaidDays = daysWorked + plPaid;
+  // Step 3: Paid days calculation
+  //
+  // Rule:
+  //   Weekly offs are ALWAYS paid — they are a statutory entitlement,
+  //   not conditional on full attendance.
+  //
+  //   PL (Earned Leave) = 1 day per 6 days of actual attendance.
+  //   PL is paid IN ADDITION to weekly offs, but only if the worker
+  //   meets the attendance threshold (threshold = working days in month,
+  //   i.e. totalDays - weeklyOffCount). If they fall short by more than
+  //   1 day, PL earned is still calculated and shown, but not added to
+  //   paid days (the employer can decide to carry forward).
+  //
+  //   totalPaidDays = daysWorked + weeklyOffCount + plPaid
+  //   where plPaid = plEarned only when threshold met, else 0.
+  //
+  // Example — Ashish, June 2026:
+  //   30 days, 5 Tuesdays off, worked 24 days, 1 casual off
+  //   threshold = 30 - 5 = 25 working days
+  //   daysWorked = 24, plAttendance = 24
+  //   plEarned = floor(24/6) = 4
+  //   threshold met? 24 < 25 → No → plPaid = 0
+  //   totalPaidDays = 24 + 5 (weekly offs) + 0 = 29  ✓
+
+  const threshold    = totalDays - weeklyOffCount; // expected working days
+  const plEarned     = Math.floor(plAttendance / 6);
+  const metThreshold = plAttendance >= threshold;
+  const plPaid       = metThreshold ? plEarned : 0; // PL added only if threshold met
+  const totalPaidDays = daysWorked + weeklyOffCount + plPaid;
 
   // Step 4: Wages using actual days in month as divisor
   const perDayRate = (w.salary||0) / totalDays;
@@ -2297,7 +2316,6 @@ function calcWageDetails(w,wi,m,y){
   const advAmt     = (data.advances||[])
                        .filter(a=>a.worker===w.name)
                        .reduce((a,e)=>a+(+e.amount||0),0);
-  const metThreshold = plAttendance >= threshold;
 
   return {
     daysWorked, plAttendance, plEarned, plPaid,
@@ -2387,7 +2405,8 @@ function renderReports(){
   const totalExp=totalCashExp+totalBankExp; // vendor payments tracked separately
   const totalAdv=(data.advances||[]).reduce((a,e)=>a+(+e.amount||0),0);
   const grossPayroll=calcGrossPayroll();   // basic + OT, before advance deduction
-  const net=netSales-totalVendor-totalExp-grossPayroll-totalAdv;
+  const netPayroll=calcNetPayroll();
+  const net=netSales-totalVendor-totalExp-netPayroll;
 
   // per-channel breakdown
   let salesRows='';
@@ -2495,7 +2514,7 @@ function renderReports(){
       <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).basicWage,0).toLocaleString('en-IN')}</td>
       <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).otAmt,0).toLocaleString('en-IN')}</td>
       <td>₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).advAmt,0).toLocaleString('en-IN')}</td>
-      <td>₹${grossPayroll.toLocaleString('en-IN')}</td>
+      <td style="color:var(--green);font-weight:700">₹${(data.workers||[]).filter(w=>w.name).reduce((a,w,wi)=>a+calcWageDetails(w,wi,curMonth,curYear).netPay,0).toLocaleString('en-IN')}</td>
     </tr>
     </tfoot>
   </table></div>
@@ -2508,8 +2527,9 @@ function renderReports(){
   <div class="pl-row expense"><span class="pl-lbl">(-) Cash Expenses</span><span class="pl-val" style="color:var(--red)">(₹${totalCashExp.toLocaleString('en-IN')})</span></div>
   <div class="pl-row expense"><span class="pl-lbl">(-) Bank Expenses (non-vendor)</span><span class="pl-val" style="color:var(--red)">(₹${totalBankExp.toLocaleString('en-IN')})</span></div>
   ${totalBankExp>0?`<div style="margin:0 0 8px 16px;font-size:12px;color:var(--text2)">${[ 'Rent', 'Premises Maintenance', 'Marketing', 'Advertisement', 'Staff Salary', 'Other'].filter(c=>bankCatTotals[c]>0).map(c=>`<span style="margin-right:12px">${c}: ₹${bankCatTotals[c].toLocaleString('en-IN')}</span>`).join('')}</div>`:''}
-  <div class="pl-row expense"><span class="pl-lbl">(-) Gross Salary &amp; OT Payable</span><span class="pl-val" style="color:var(--red)">(₹${grossPayroll.toLocaleString('en-IN')})</span></div>
-  <div class="pl-row expense"><span class="pl-lbl">(-) Advances Paid to Staff</span><span class="pl-val" style="color:var(--red)">(₹${totalAdv.toLocaleString('en-IN')})</span></div>
+  <div class="pl-row expense"><span class="pl-lbl">(-) Gross Salary &amp; OT (Basic + OT)</span><span class="pl-val" style="color:var(--red)">(₹${grossPayroll.toLocaleString('en-IN')})</span></div>
+  <div class="pl-row" style="margin-left:16px;font-size:13px"><span class="pl-lbl" style="color:var(--text3)">  ↳ Less: Advances Adjusted</span><span class="pl-val" style="color:var(--text3)">(₹${totalAdv.toLocaleString('en-IN')})</span></div>
+  <div class="pl-row expense" style="border-top:1px dashed var(--border);margin-top:2px"><span class="pl-lbl" style="font-weight:700">  = Net Salary Payable</span><span class="pl-val" style="color:var(--red);font-weight:700">(₹${calcNetPayroll().toLocaleString('en-IN')})</span></div>
   <div class="pl-row net"><span class="pl-lbl">NET PROFIT / (LOSS)</span><span class="pl-val" style="color:${net>=0?'var(--green)':'var(--red)'}">₹${net.toLocaleString('en-IN')}</span></div>
 </div>`;
 
@@ -2551,7 +2571,7 @@ function renderCharts(stats){
   // 2. P&L Breakdown (horizontal bar — waterfall style)
   destroyChart('pl');
   const plLabels=['Net Sales','Vendor Purch.','Cash Exp.','Bank Exp.','Salary & OT','Advances','Net Profit'];
-  const plValues=[stats.netSales,-stats.totalVendor,-stats.totalCashExp,-stats.totalBankExp,-stats.grossPayroll,-stats.totalAdv,stats.net];
+  const plValues=[stats.netSales,-stats.totalVendor,-stats.totalCashExp,-stats.totalBankExp,-stats.grossPayroll,-(stats.totalAdv||0),stats.net];
   const plColors=plValues.map((v,i)=> i===0 ? '#2a6fb0' : (i===plValues.length-1 ? (v>=0?'#1f9d6e':'#d6473a') : '#d6473a'));
   const plCanvas=document.getElementById('chart-pl');
   if(plCanvas){
@@ -2600,7 +2620,7 @@ function renderCharts(stats){
     }
   }
 }  // Render visual charts (after DOM update)
-  setTimeout(()=>renderCharts({gross,commTotal,netSales,totalVendor,totalCashExp,totalBankExp,grossPayroll,totalAdv,net,bankCatTotals}),0);
+  setTimeout(()=>renderCharts({gross,commTotal,netSales,totalVendor,totalCashExp,totalBankExp,grossPayroll,netPayroll,totalAdv,net,bankCatTotals}),0);
 }
 function calcGrossPayroll(){
   return (data.workers||[]).reduce((tot,w,wi)=>{
@@ -2608,7 +2628,13 @@ function calcGrossPayroll(){
     return tot+calcWageDetails(w,wi,curMonth,curYear).grossPay;
   },0);
 }
-function calcTotalPayroll(){ return calcGrossPayroll(); } // alias kept for XLSX
+function calcNetPayroll(){
+  return (data.workers||[]).reduce((tot,w,wi)=>{
+    if(!w.name) return tot;
+    return tot+calcWageDetails(w,wi,curMonth,curYear).netPay;
+  },0);
+}
+function calcTotalPayroll(){ return calcNetPayroll(); } // alias used by XLSX export
 
 // ── ARCHIVE ──────────────────────────────────────────────────────────────────
 function renderArchive(){
