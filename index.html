@@ -18,6 +18,7 @@
   ════════════════════════════════════════════════════════
 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="version" content="v20260702162843">
 <title>Eatss MIS Reporting</title>
 <link rel="icon" type="image/png" href="Eatss_favicon_32.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -2229,22 +2230,11 @@ function setWorkerPIN(){
 function addWorker(){ data.workers.push({name:'',desig:'',salary:0,otRate:100,weeklyOff:''}); renderAttendance(); }
 function delWorker(i){ data.workers.splice(i,1); renderAttendance(); }
 function calcWageDetails(w,wi,m,y){
-  // ── FINAL WAGE FORMULA ───────────────────────────────────────────────────
-  // Per Day Rate  = Salary / Days in Month
-  // Threshold     = Days in Month - Weekly Offs in Month
-  //   IF days_worked >= threshold  →  PL Paid = all weekly offs
-  //   IF days_worked <  threshold  →  PL Paid = floor(days_worked / 6)
-  // Total Paid    = Days Worked + PL Paid
+  // ── WAGE FORMULA (updated) ───────────────────────────────────────────────
+  // Per Day Rate  = Salary / Calendar Days in Month
   // Wage          = Per Day Rate × Total Paid Days
-  //
-  // P/2 = 0.5 days for wages, 1 full day for PL/threshold check
-  //
-  // Verified examples:
-  //   Jun (30d,5Tue): worked=25 → 25>=25 → paid=25+5=30 ✓
-  //   Apr (30d,5Tue): worked=26 → 26>=25 → paid=26+5=31 ✓
-  //   Apr (30d,5Tue): worked=7  → 7<25   → PL=1 → paid=8  ✓
-  //   May (31d,4Tue): worked=30 → 30>=27 → paid=30+4=34 ✓
-  //   Apr (30d,5Tue): worked=19 → 19<25  → PL=3 → paid=22 ✓
+  // P/2 = 0.5 days for wages, 1 full day for attendance count
+  // Weekly off days actually worked (P/P2/P4) reduce weeklyOffCount (Option A)
   // ─────────────────────────────────────────────────────────────────────────
   const rec       = data.attendance[wi]||{};
   const totalDays = daysInMonth(m,y);
