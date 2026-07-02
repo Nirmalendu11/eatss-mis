@@ -2280,34 +2280,58 @@ function calcWageDetails(w,wi,m,y){
 
   // Step 3: Paid days calculation
   //
-  // Off days  = total days not worked = totalDays − daysWorked
-  //             (includes weekly offs + all absences)
-  // Eligible PL = weeklyOffCount (scheduled weekly offs)
+  // PL days    = weeklyOffCount (scheduled weekly offs for the month)
+  // Off days   = totalDays − daysWorked (all non-worked days incl. weekly offs)
   //
-  // Rule 1 — Off days ≤ Weekly offs:
-  //   Paid days = Calendar days + Weekly offs − Off days
-  //   (worker has excess PL: bonus days added)
+  // Rule 2c — worked ≤ 6:
+  //   Paid = worked only (no PL benefit for very low attendance)
   //
-  // Rule 2 — Off days > Weekly offs:
-  //   Paid days = Days worked + Weekly offs
-  //   (excess absences beyond weekly off entitlement — no bonus)
+  // Rule 1  — off ≤ PL:
+  //   Paid = calendar + PL − off
+  //   (absences covered by PL; any remaining PL adds bonus paid days)
   //
-  // Examples:
-  //   Ashish June 2026: worked=24, WO=5, off=6 → Rule 2 → 24+5 = 29 ✓
-  //   Full attend:      worked=25, WO=5, off=5 → Rule 1 → 30+5−5 = 30 ✓
-  //   High absence:     worked=18, WO=5, off=12→ Rule 2 → 18+5 = 23 ✓
+  // Rule 2a — off > PL AND worked ≥ 22:
+  //   Paid = worked + PL
+  //   (decent attendance — full PL entitlement still granted)
+  //
+  // Rule 2b — off > PL AND 6 < worked < 22:
+  //   Paid = worked + PL − floor(off / 6)
+  //   (poor attendance — 1 PL day deducted per 6-day block of total off)
+  //
+  // Verified examples (calendar=30, PL=5):
+  //   worked=28, off=2  → Rule 1  → 30+5-2  = 33
+  //   worked=24, off=6  → Rule 2a → 24+5    = 29
+  //   worked=21, off=9  → Rule 2b → 21+5-1  = 25
+  //   worked=18, off=12 → Rule 2b → 18+5-2  = 21
+  //   worked=4,  off=26 → Rule 2c → 4
 
-  const offDays      = totalDays - daysWorked;          // all non-worked days
-  const plEarned     = weeklyOffCount;                  // eligible PL = weekly off count
-  const metThreshold = offDays <= weeklyOffCount;       // Rule 1: off days within WO entitlement
+  const offDays  = totalDays - daysWorked;
+  const plEarned = weeklyOffCount;   // PL entitlement = no. of weekly offs in month
 
-  // Rule 1 (off ≤ WO): Paid = Calendar + Weekly offs − Off days
-  // Rule 2 (off > WO): Paid = Days worked + Weekly offs
-  const totalPaidDays = metThreshold
-                         ? totalDays + weeklyOffCount - offDays
-                         : daysWorked + weeklyOffCount;
-  const plPaid       = totalPaidDays - daysWorked;      // total days added on top of worked days
-  const threshold    = weeklyOffCount;                  // kept for display compatibility
+  let totalPaidDays;
+  let metThreshold;
+
+  if (daysWorked <= 6) {
+    // Rule 2c
+    totalPaidDays = daysWorked;
+    metThreshold  = false;
+  } else if (offDays <= plEarned) {
+    // Rule 1
+    totalPaidDays = totalDays + plEarned - offDays;
+    metThreshold  = true;
+  } else if (daysWorked >= 22) {
+    // Rule 2a
+    totalPaidDays = daysWorked + plEarned;
+    metThreshold  = true;
+  } else {
+    // Rule 2b
+    const blocks  = Math.floor(offDays / 6);
+    totalPaidDays = daysWorked + plEarned - blocks;
+    metThreshold  = false;
+  }
+
+  const plPaid   = totalPaidDays - daysWorked;
+  const threshold = plEarned;   // kept for display compatibility
 
   // Step 4: Wages using actual days in month as divisor
   const perDayRate = (w.salary||0) / totalDays;
