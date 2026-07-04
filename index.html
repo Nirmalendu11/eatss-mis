@@ -482,6 +482,7 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
     <div class="nav-tab" onclick="showTab('attendance')">👥 Attendance</div>
     <div class="nav-tab" onclick="showTab('advances')">💰 Staff Advance</div>
     <div class="nav-tab" onclick="showTab('reports')">📋 Reports</div>
+    <div class="nav-tab" onclick="showTab('food-cost')">🍳 Food Cost</div>
     <div class="nav-tab" onclick="showTab('archive')">🗂 Archive</div>
     <div class="nav-tab" onclick="showTab('vendor-setup')">⚙ Vendors</div>
     <div class="nav-tab" id="access-nav-tab" onclick="showTab('access-mgmt')" style="display:none">🔐 Access</div>
@@ -664,6 +665,10 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
     </div>
 
     <!-- ARCHIVE -->
+    <div id="tab-food-cost" class="screen">
+      <div class="section-hdr">Food Cost Analysis</div>
+      <div id="food-cost-content"></div>
+    </div>
     <div id="tab-archive" class="screen">
       <div class="section-hdr" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:12px"><h2>Month Archive</h2><span class="pill">All saved months</span></div>
@@ -784,6 +789,7 @@ const DAYS_MAP    = [31,28,31,30,31,30,31,31,30,31,30,31];
 const PAYMENT_TYPES=['Weekly','Fortnightly (1-15 / 16-End)','Monthly','Calendar Periods (1-10/11-20/21-End)','Custom'];
 const VENDOR_TAGS=['Raw Material','Dairy','Beverages','Packaging','Cleaning','Repairs & Maintenance','Utilities','Transport','Other'];
 const VENDOR_TAG_COLORS={'Raw Material':'#b45309','Dairy':'#0369a1','Beverages':'#7c3aed','Packaging':'#0f766e','Cleaning':'#15803d','Repairs & Maintenance':'#dc2626','Utilities':'#ea580c','Transport':'#1d4ed8','Other':'#64748b'};
+const FOOD_ITEMS=['Dairy','Vegetables','Grocery','Packaged Spices','Beverages','Mutton','Chicken','Fish','Eggs','Rumali Roti','Dessert','Coal','Gas','Wastage'];
 const DEFAULT_VENDORS = []; // new restaurants start with an empty vendor list
 let VENDORS = []; // mutable — loaded per-restaurant from its own VENDOR_LIST tab
 const SALES_CATS  = ['Zomato','Swiggy','Toing','Dineout','District','Card','UPI','Cash','Any Other'];
@@ -826,6 +832,11 @@ function blankData(m,y,prevWorkers){
     cashVendorPmts: {},
     vendorPayLog: [],  // [{date, vendor, amount, mode, ref}] — flat payment register
     bankExpenses: [],  // [{date, category, payee, vendor, amount, mode, ref, notes}]
+    foodCost: {
+      openingStock: Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),
+      closingStock:  Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),
+      dailyPurchases: Object.fromEntries(Array.from({length:31},(_,i)=>[i+1, Object.fromEntries(FOOD_ITEMS.map(k=>[k,0]))])),
+    },
   };
 }
 
@@ -1612,6 +1623,8 @@ async function openMonth(m,y){
     }
     if(data){
       if(!data.vendorOpening) data.vendorOpening={};
+      if(!data.foodCost) data.foodCost={openingStock:Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),closingStock:Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),dailyPurchases:Object.fromEntries(Array.from({length:31},(_,i)=>[i+1,Object.fromEntries(FOOD_ITEMS.map(k=>[k,0]))]))};
+      FOOD_ITEMS.forEach(k=>{if(!(k in data.foodCost.openingStock))data.foodCost.openingStock[k]=0;if(!(k in data.foodCost.closingStock))data.foodCost.closingStock[k]=0;});
       if(!data.vendorPurchases) data.vendorPurchases={};
       if(!data.vendorPayLog) data.vendorPayLog=[];
       if(!data.bankExpenses) data.bankExpenses=[];
@@ -1864,8 +1877,14 @@ function renderVpayOutstanding(){
       <td style="color:${color};font-weight:600">₹${r.outstanding.toLocaleString('en-IN')}</td>
     </tr>`;
   });
+  const totalOB=rows.reduce((a,r)=>a+r.opening,0);
+  const totalPurch=rows.reduce((a,r)=>a+r.purchases,0);
+  const totalPaid=rows.reduce((a,r)=>a+r.paid,0);
   html+=`</tbody><tfoot><tr class="total-row">
-    <td style="text-align:left">TOTAL</td><td>—</td><td>—</td><td>—</td>
+    <td style="text-align:left">TOTAL</td>
+    <td>${totalOB?'₹'+totalOB.toLocaleString('en-IN'):'—'}</td>
+    <td>₹${totalPurch.toLocaleString('en-IN')}</td>
+    <td style="color:var(--green)">₹${totalPaid.toLocaleString('en-IN')}</td>
     <td style="color:${totalOS>0?'var(--red)':'var(--green)'};font-weight:700">₹${totalOS.toLocaleString('en-IN')}</td>
   </tr></tfoot></table></div>`;
   // ── TAG SUMMARY ──────────────────────────────────────────────────────────
@@ -2127,11 +2146,19 @@ function renderVendors(){
   // Opening balances
   const og=document.getElementById('vendor-ob-grid');
   og.innerHTML='';
+  let obGrand=0;
   VENDORS.forEach(v=>{
     const d=document.createElement('div'); d.className='vendor-ob-item';
-    d.innerHTML=`<label>${v}</label><input type="text" inputmode="numeric" value="${data.vendorOpening[v]||0}" onchange="data.vendorOpening['${v}']=numVal(this.value)" onkeydown="return blockArrows(event)">`;
+    d.innerHTML=`<label>${v}</label><input type="text" inputmode="numeric" value="${data.vendorOpening[v]||0}" onchange="data.vendorOpening['${v}']=numVal(this.value);renderVendorPayments()" onkeydown="return blockArrows(event)">`;
     og.appendChild(d);
+    obGrand+=+(data.vendorOpening[v]||0);
   });
+  // Total OB card
+  const obTotDiv=document.createElement('div');
+  obTotDiv.className='vendor-ob-item';
+  obTotDiv.style.cssText='background:var(--surface2);border-radius:8px;padding:8px 12px;border:1px solid var(--border2)';
+  obTotDiv.innerHTML=`<label style="font-weight:700;color:var(--text)">Total Opening Balance</label><div style="font-size:18px;font-weight:700;color:var(--accent);margin-top:4px">₹${obGrand.toLocaleString('en-IN')}</div>`;
+  og.appendChild(obTotDiv);
   // Daily table
   const days=daysInMonth(curMonth,curYear);
   const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; // JS: 0=Sun,1=Mon,...,6=Sat
@@ -2895,15 +2922,230 @@ async function recoverMonths(){
   }catch(e){ toast('Recovery failed: '+e.message,'error'); }
   finally{ loading(false); }
 }
+// ── FOOD COST ─────────────────────────────────────────────────────────────────
+function renderFoodCost(){
+  if(!data) return;
+  if(!data.foodCost) data.foodCost={
+    openingStock: Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),
+    closingStock:  Object.fromEntries(FOOD_ITEMS.map(k=>[k,0])),
+    dailyPurchases: Object.fromEntries(Array.from({length:31},(_,i)=>[i+1,Object.fromEntries(FOOD_ITEMS.map(k=>[k,0]))])),
+  };
+  FOOD_ITEMS.forEach(k=>{
+    if(!(k in data.foodCost.openingStock)) data.foodCost.openingStock[k]=0;
+    if(!(k in data.foodCost.closingStock))  data.foodCost.closingStock[k]=0;
+  });
+
+  const fc=data.foodCost;
+  const days=daysInMonth(curMonth,curYear);
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  // ── Sales buckets (from sales data) ──────────────────────────────────────
+  // Dine-in: card + upi + cash + any_other (incl part payment → offline)
+  // Online Delivery: zomato + swiggy + toing + magicpin
+  // Online Dine-in: dineout + district
+  let dineinGross=0, deliveryGross=0, onlineDineinGross=0;
+  let dineinGST=0, deliveryGST=0, onlineDineinGST=0;
+  const commRates=data.commRates||{};
+
+  for(let d=1;d<=days;d++){
+    const s=data.sales[d]||{};
+    // Gross sales per channel
+    const diGross=(+s.card||0)+(+s.upi||0)+(+s.cash||0)+(+s.any_other||0);
+    const dlGross=(+s.zomato||0)+(+s.swiggy||0)+(+s.toing||0);
+    const odGross=(+s.dineout||0)+(+s.district||0);
+    dineinGross+=diGross; deliveryGross+=dlGross; onlineDineinGross+=odGross;
+  }
+  // GST rate 5% (standard restaurant rate)
+  const GST_RATE=0.05;
+  const netOf=g=>g/(1+GST_RATE);
+  const dineinNet=Math.round(netOf(dineinGross));
+  const deliveryNet=Math.round(netOf(deliveryGross));
+  const onlineDineinNet=Math.round(netOf(onlineDineinGross));
+  const totalNetSales=dineinNet+deliveryNet+onlineDineinNet;
+  const totalGross=dineinGross+deliveryGross+onlineDineinGross;
+
+  // Commission deductions
+  let dineinComm=0, deliveryComm=0, onlineDineinComm=0;
+  for(let d=1;d<=days;d++){
+    const s=data.sales[d]||{};
+    deliveryComm+=((+s.zomato||0)*(commRates.zomato||0)+(+s.swiggy||0)*(commRates.swiggy||0)+(+s.toing||0)*(commRates.toing||0))/100;
+    onlineDineinComm+=((+s.dineout||0)*(commRates.dineout||0)+(+s.district||0)*(commRates.district||0))/100;
+  }
+
+  // ── Food cost per item ────────────────────────────────────────────────────
+  const itemData=FOOD_ITEMS.map(k=>{
+    const ob=+(fc.openingStock[k]||0);
+    const cb=+(fc.closingStock[k]||0);
+    const purchases=Object.values(fc.dailyPurchases).reduce((a,r)=>a+(+r[k]||0),0);
+    const consumption=ob+purchases-cb;
+    return {k,ob,purchases,cb,consumption};
+  });
+  const totalConsumption=itemData.reduce((a,r)=>a+r.consumption,0);
+  const totalPurchases=itemData.reduce((a,r)=>a+r.purchases,0);
+  const fcPct=totalNetSales>0?(totalConsumption/totalNetSales*100):0;
+
+  // ── Gross Margin per bucket ───────────────────────────────────────────────
+  // Food cost allocated proportionally to net sales
+  const fcDinein     = totalNetSales>0?totalConsumption*(dineinNet/totalNetSales):0;
+  const fcDelivery   = totalNetSales>0?totalConsumption*(deliveryNet/totalNetSales):0;
+  const fcOnlineDI   = totalNetSales>0?totalConsumption*(onlineDineinNet/totalNetSales):0;
+
+  const gmDinein     = dineinNet     - Math.round(fcDinein)    - Math.round(dineinComm);
+  const gmDelivery   = deliveryNet   - Math.round(fcDelivery)  - Math.round(deliveryComm);
+  const gmOnlineDI   = onlineDineinNet - Math.round(fcOnlineDI) - Math.round(onlineDineinComm);
+  const gmTotal      = totalNetSales - totalConsumption;
+
+  const pct=(n,d)=>d>0?(n/d*100).toFixed(1)+'%':'—';
+  const inr=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const el=document.getElementById('food-cost-content');
+
+  // Summary cards
+  let html=`<div class="stat-grid">
+    <div class="stat-card"><div class="lbl">Total Net Sales</div><div class="val amber">${inr(totalNetSales)}</div><div class="sub">Excl. GST</div></div>
+    <div class="stat-card"><div class="lbl">Total Purchases</div><div class="val red">${inr(totalPurchases)}</div><div class="sub">Month input spend</div></div>
+    <div class="stat-card"><div class="lbl">Total Consumption</div><div class="val red">${inr(totalConsumption)}</div><div class="sub">OB + Purchases − CB</div></div>
+    <div class="stat-card"><div class="lbl">Food Cost %</div><div class="val ${fcPct>35?'red':fcPct>28?'amber':'green'}" style="font-size:28px">${fcPct.toFixed(1)}%</div><div class="sub">Of Net Sales</div></div>
+    <div class="stat-card"><div class="lbl">Gross Margin</div><div class="val green">${inr(gmTotal)}</div><div class="sub">${pct(gmTotal,totalNetSales)} of Net Sales</div></div>
+    <div class="stat-card"><div class="lbl">Closing Stock</div><div class="val blue">${inr(itemData.reduce((a,r)=>a+r.cb,0))}</div><div class="sub">Month-end value</div></div>
+  </div>`;
+
+  // Gross margin by channel
+  html+=`<div class="section-hdr" style="margin-top:4px">Gross Margin by Sales Channel</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr>
+      <th class="left">Channel</th>
+      <th class="r">Gross Sales</th><th class="r">Net Sales (excl GST)</th>
+      <th class="r">Food Cost (alloc.)</th><th class="r">Commission</th>
+      <th class="r">Gross Margin</th><th class="r">GM %</th>
+    </tr></thead><tbody>
+    <tr>
+      <td><b>Dine-in</b><div style="font-size:11px;color:var(--text3)">Card · UPI · Cash · Other</div></td>
+      <td class="r">${inr(dineinGross)}</td><td class="r">${inr(dineinNet)}</td>
+      <td class="r" style="color:var(--red)">${inr(fcDinein)}</td>
+      <td class="r" style="color:var(--text3)">${inr(dineinComm)}</td>
+      <td class="r" style="color:var(--green);font-weight:600">${inr(gmDinein)}</td>
+      <td class="r" style="color:var(--green)">${pct(gmDinein,dineinNet)}</td>
+    </tr>
+    <tr>
+      <td><b>Online Delivery</b><div style="font-size:11px;color:var(--text3)">Zomato · Swiggy · Toing</div></td>
+      <td class="r">${inr(deliveryGross)}</td><td class="r">${inr(deliveryNet)}</td>
+      <td class="r" style="color:var(--red)">${inr(fcDelivery)}</td>
+      <td class="r" style="color:var(--text3)">${inr(deliveryComm)}</td>
+      <td class="r" style="color:var(--green);font-weight:600">${inr(gmDelivery)}</td>
+      <td class="r" style="color:var(--green)">${pct(gmDelivery,deliveryNet)}</td>
+    </tr>
+    <tr>
+      <td><b>Online Dine-in</b><div style="font-size:11px;color:var(--text3)">DineOut · Zomato District</div></td>
+      <td class="r">${inr(onlineDineinGross)}</td><td class="r">${inr(onlineDineinNet)}</td>
+      <td class="r" style="color:var(--red)">${inr(fcOnlineDI)}</td>
+      <td class="r" style="color:var(--text3)">${inr(onlineDineinComm)}</td>
+      <td class="r" style="color:var(--green);font-weight:600">${inr(gmOnlineDI)}</td>
+      <td class="r" style="color:var(--green)">${pct(gmOnlineDI,onlineDineinNet)}</td>
+    </tr>
+    </tbody><tfoot><tr class="total-row">
+      <td class="left">TOTAL</td>
+      <td class="r">${inr(totalGross)}</td><td class="r">${inr(totalNetSales)}</td>
+      <td class="r">${inr(totalConsumption)}</td>
+      <td class="r">${inr(dineinComm+deliveryComm+onlineDineinComm)}</td>
+      <td class="r" style="font-weight:700">${inr(gmTotal)}</td>
+      <td class="r">${pct(gmTotal,totalNetSales)}</td>
+    </tr></tfoot>
+  </table></div>`;
+
+  // Opening & Closing Stock
+  html+=`<div class="section-hdr">Opening &amp; Closing Stock (₹ value)</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr>
+      <th class="left">Item</th>
+      <th class="r">Opening Stock</th><th class="r">Month Purchases</th>
+      <th class="r">Closing Stock</th><th class="r">Consumption</th>
+      <th class="r">% of Total Cost</th>
+    </tr></thead><tbody>`;
+  itemData.forEach(r=>{
+    const pctOfCost=totalConsumption>0?(r.consumption/totalConsumption*100).toFixed(1)+'%':'—';
+    html+=`<tr>
+      <td style="font-weight:500">${r.k}</td>
+      <td class="r"><input class="cell-inp" type="text" inputmode="numeric" value="${r.ob||''}" placeholder="0"
+        style="max-width:90px;text-align:right"
+        onchange="data.foodCost.openingStock['${r.k}']=numVal(this.value);renderFoodCost()"
+        onkeydown="return blockArrows(event)"></td>
+      <td class="r" style="font-weight:600">${inr(r.purchases)}</td>
+      <td class="r"><input class="cell-inp" type="text" inputmode="numeric" value="${r.cb||''}" placeholder="0"
+        style="max-width:90px;text-align:right"
+        onchange="data.foodCost.closingStock['${r.k}']=numVal(this.value);renderFoodCost()"
+        onkeydown="return blockArrows(event)"></td>
+      <td class="r" style="color:${r.consumption<0?'var(--red)':'var(--text)'};font-weight:600">${inr(r.consumption)}</td>
+      <td class="r" style="color:var(--text3)">${pctOfCost}</td>
+    </tr>`;
+  });
+  const totOB=itemData.reduce((a,r)=>a+r.ob,0);
+  const totCB=itemData.reduce((a,r)=>a+r.cb,0);
+  html+=`</tbody><tfoot><tr class="total-row">
+    <td class="left">TOTAL</td>
+    <td class="r">${inr(totOB)}</td><td class="r">${inr(totalPurchases)}</td>
+    <td class="r">${inr(totCB)}</td>
+    <td class="r" style="font-weight:700">${inr(totalConsumption)}</td>
+    <td class="r">100%</td>
+  </tr></tfoot></table></div>`;
+
+  // Daily purchases table
+  html+=`<div class="section-hdr">Daily Input Purchases (₹)</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr>
+      <th style="position:sticky;left:0;z-index:4;background:var(--surface2);min-width:72px">Date</th>
+      <th style="position:sticky;left:72px;z-index:4;background:var(--surface2);min-width:44px">Day</th>`;
+  FOOD_ITEMS.forEach(k=>{
+    html+=`<th style="font-size:10px;min-width:80px;text-align:center">${k}</th>`;
+  });
+  html+=`<th style="min-width:80px">Total</th></tr></thead><tbody>`;
+  for(let i=1;i<=days;i++){
+    const dt=new Date(curYear,curMonth-1,i);
+    const row=fc.dailyPurchases[i]||{};
+    const tot=FOOD_ITEMS.reduce((a,k)=>a+(+row[k]||0),0);
+    html+=`<tr><td class="date-cell" style="position:sticky;left:0;z-index:2;background:var(--surface)">${String(i).padStart(2,'0')}-${MONTHS[curMonth-1]}</td>
+      <td class="date-cell" style="position:sticky;left:72px;z-index:2;background:var(--surface)">${dayNames[dt.getDay()]}</td>`;
+    FOOD_ITEMS.forEach(k=>{
+      html+=`<td><input class="cell-inp" type="text" inputmode="numeric" value="${row[k]||''}" placeholder="—"
+        style="min-width:70px;font-size:10px;text-align:right"
+        onkeydown="return blockArrows(event)"
+        onchange="setFoodCost(${i},'${k.replace(/'/g,"\\'")}',this.value)"></td>`;
+    });
+    html+=`<td class="total-cell" id="fctot-${i}">${tot?inr(tot):'—'}</td></tr>`;
+  }
+  // Monthly totals row
+  html+=`<tr class="total-row"><td colspan="2" style="position:sticky;left:0;z-index:2;background:var(--surface2)">Monthly Total</td>`;
+  FOOD_ITEMS.forEach(k=>{
+    const t=Object.values(fc.dailyPurchases).reduce((a,r)=>a+(+r[k]||0),0);
+    html+=`<td style="text-align:right;font-size:11px">${t?inr(t):'—'}</td>`;
+  });
+  html+=`<td class="total-cell">${inr(totalPurchases)}</td></tr>`;
+  html+=`</tbody></table></div>`;
+
+  el.innerHTML=html;
+}
+
+function setFoodCost(day,item,val){
+  if(!data.foodCost.dailyPurchases[day]) data.foodCost.dailyPurchases[day]={};
+  data.foodCost.dailyPurchases[day][item]=numVal(val);
+  // Update row total
+  const row=data.foodCost.dailyPurchases[day];
+  const tot=FOOD_ITEMS.reduce((a,k)=>a+(+row[k]||0),0);
+  const el=document.getElementById('fctot-'+day);
+  if(el) el.textContent=tot?'₹'+Math.round(tot).toLocaleString('en-IN'):'—';
+}
+
 function showTab(name){
   document.querySelectorAll('.nav-tab').forEach((t,i)=>{
-    const tabs=['sales','expenses','bank-expenses','vendors','vendor-payments','attendance','advances','reports','archive','vendor-setup','access-mgmt'];
+    const tabs=['sales','expenses','bank-expenses','vendors','vendor-payments','attendance','advances','reports','food-cost','archive','vendor-setup','access-mgmt'];
     t.classList.toggle('active',tabs[i]===name);
   });
   document.querySelectorAll('#main .screen').forEach(s=>s.classList.remove('active'));
   const t=document.getElementById('tab-'+name);
   if(t){ t.classList.add('active');
     if(name==='reports') renderReports();
+    if(name==='food-cost') renderFoodCost();
     if(name==='archive') renderArchive();
     if(name==='vendor-payments'){ renderVendorPayments(); renderVpayWeekly(); }
     if(name==='bank-expenses') renderBankExpenses();
