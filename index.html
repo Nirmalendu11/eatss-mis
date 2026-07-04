@@ -1773,7 +1773,7 @@ function renderVpayWeekly(){
     <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin-bottom:24px"><table>
       <thead><tr>
         <th class="left" style="min-width:140px">Period</th>
-        ${vendors.map(v=>`<th style="font-size:10px;min-width:80px">${v.split(' ')[0]}</th>`).join('')}
+        ${vendors.map(v=>'<th style="font-size:10px;min-width:80px">'+v.split(' ')[0]+'</th>').join('')}
         <th>Total</th>
       </tr></thead><tbody>`;
 
@@ -1782,7 +1782,7 @@ function renderVpayWeekly(){
       const pTotal=rowTots.reduce((a,b)=>a+b,0);
       html+=`<tr>
         <td class="date-cell" style="font-weight:600">${p.label}</td>
-        ${rowTots.map(t=>`<td>${t?'₹'+t.toLocaleString('en-IN'):'—'}</td>`).join('')}
+        ${rowTots.map(t=>'<td>'+(t?'₹'+t.toLocaleString('en-IN'):'—')+'</td>').join('')}
         <td class="total-cell">${pTotal?'₹'+pTotal.toLocaleString('en-IN'):'—'}</td>
       </tr>`;
     });
@@ -1791,7 +1791,7 @@ function renderVpayWeekly(){
     const mTots=vendors.map(v=>Object.values(data.vendorPurchases||{}).reduce((a,r)=>a+(+r[v]||0),0));
     const mGrand=mTots.reduce((a,b)=>a+b,0);
     html+=`<tr class="total-row"><td style="text-align:left">Monthly Total</td>
-      ${mTots.map(t=>`<td>₹${t.toLocaleString('en-IN')}</td>`).join('')}
+      ${mTots.map(t=>'<td>₹'+t.toLocaleString('en-IN')+'</td>').join('')}
       <td>₹${mGrand.toLocaleString('en-IN')}</td>
     </tr></tbody></table></div>`;
   });
@@ -1951,7 +1951,7 @@ function renderVendorSetup(){
   let html=bulkBanner+'<div style="display:flex;flex-direction:column;gap:8px">';
   vendorMasterList.forEach((v,i)=>{
     const isActive=v.active!==false;
-    const ptOpts=PAYMENT_TYPES.map(p=>`<option value="${p}" ${(v.paymentType||'Weekly')===p?'selected':''}>${p}</option>`).join('');
+    const ptOpts=PAYMENT_TYPES.map(p=>'<option value="'+p+'" '+(((v.paymentType||'Weekly')===p)?'selected':'')+'>'+p+'</option>').join('');
     html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid ${isActive?'var(--border)':'var(--border2)'};border-radius:10px;opacity:${isActive?1:0.55};flex-wrap:wrap">
       <span style="width:28px;text-align:center;color:var(--text3);font-size:14px">${i+1}</span>
       <input value="${v.name}" placeholder="Vendor name" onchange="vendorMasterList[${i}].name=this.value"
@@ -1959,7 +1959,7 @@ function renderVendorSetup(){
       <select onchange="vendorMasterList[${i}].paymentType=this.value" title="Payment frequency"
         style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 10px;color:var(--text2);font-family:var(--font-body);font-size:13px">${ptOpts}</select>
       <select onchange="vendorMasterList[${i}].tag=this.value" title="Expense category tag"
-        style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 10px;color:var(--text2);font-family:var(--font-body);font-size:13px">${VENDOR_TAGS.map(t=>`<option value="${t}" ${(v.tag||'Other')===t?'selected':''}>${t}</option>`).join('')}</select>
+        style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:8px 10px;color:var(--text2);font-family:var(--font-body);font-size:13px">${VENDOR_TAGS.map(t=>'<option value="'+t+'" '+(((v.tag||'Other')===t)?'selected':'')+'>'+t+'</option>').join('')}</select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer;white-space:nowrap">
         <input type="checkbox" ${isActive?'checked':''} onchange="vendorMasterList[${i}].active=this.checked;renderVendorSetup()"
           style="width:16px;height:16px;cursor:pointer">
@@ -1983,7 +1983,7 @@ function bulkAssignTags(){
   overlay.id='bulk-tag-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   const rows=vendorMasterList.map((v,i)=>{
-    const opts=VENDOR_TAGS.map(t=>`<option value="${t}" ${(v.tag||'Other')===t?'selected':''}>${t}</option>`).join('');
+    const opts=VENDOR_TAGS.map(t=>'<option value="'+t+'" '+(((v.tag||'Other')===t)?'selected':'')+'>'+t+'</option>').join('');
     const tc=VENDOR_TAG_COLORS[v.tag||'Other']||'#64748b';
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
       <span style="min-width:160px;font-size:14px;font-weight:500;color:var(--text)">${v.name||'(unnamed)'}</span>
@@ -2182,12 +2182,12 @@ function renderAttendance(){
   wl.innerHTML='';
   (data.workers||[]).forEach((w,i)=>{
     const div=document.createElement('div'); div.className='worker-row';
-    const _woDayOpts=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<option value="${d}" ${(w.weeklyOff||'')=== d?'selected':''}>${d}</option>`).join('');
+    const _woDayOpts=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<option value="'+d+'" '+((w.weeklyOff||''===d)?'selected':'')+'>'+d+'</option>').join('');
     div.innerHTML=`<span class="worker-num">${i+1}</span>
 <input value="${w.name||''}" placeholder="Worker Name" style="min-width:130px" onchange="data.workers[${i}].name=this.value;renderAttTable()">
 <input value="${w.desig||''}" placeholder="Designation" style="min-width:90px" onchange="data.workers[${i}].desig=this.value">
-<input class="sal-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.salary||''):'••••••'}" placeholder="Salary ₹" ${workerUnlocked?`onchange="data.workers[${i}].salary=numVal(this.value)" onkeydown="return blockArrows(event)"`:'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
-<input class="ot-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.otRate||100):'••••'}" placeholder="OT ₹" ${workerUnlocked?`onchange="data.workers[${i}].otRate=numVal(this.value)" onkeydown="return blockArrows(event)"`:'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
+<input class="sal-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.salary||''):'••••••'}" placeholder="Salary ₹" ${workerUnlocked?'onchange="data.workers['+i+'].salary=numVal(this.value)" onkeydown="return blockArrows(event)"':'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
+<input class="ot-inp" type="text" inputmode="numeric" value="${workerUnlocked?(w.otRate||100):'••••'}" placeholder="OT ₹" ${workerUnlocked?'onchange="data.workers['+i+'].otRate=numVal(this.value)" onkeydown="return blockArrows(event)"':'readonly style="pointer-events:none;letter-spacing:3px;color:var(--text3)"'}>
 <select onchange="data.workers[${i}].weeklyOff=this.value;renderAttTable()" style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:7px;padding:7px 8px;color:var(--text);font-family:var(--font-body);font-size:13px">
   <option value="">W/Off day?</option>${_woDayOpts}
 </select>
@@ -2525,19 +2525,19 @@ function renderReports(){
     <tfoot>
     <tr class="total-row" id="payroll-totals-row">
       <td style="text-align:left">TOTALS</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).daysWorked,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plAttendance,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plEarned,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).weeklyOffCount,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plPaid,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).totalPaidDays,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot2,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot4,0)}</td>
-      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otHrs,0)}</td>
-      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).basicWage,0).toLocaleString('en-IN')}</td>
-      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otAmt,0).toLocaleString('en-IN')}</td>
-      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).advAmt,0).toLocaleString('en-IN')}</td>
-      <td style="color:var(--green);font-weight:700">₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).netPay,0).toLocaleString('en-IN')}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).daysWorked:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plAttendance:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plEarned:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).weeklyOffCount:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).plPaid:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).totalPaidDays:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot2:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).ot4:a,0)}</td>
+      <td>${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otHrs:a,0)}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).basicWage:a,0).toLocaleString('en-IN')}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).otAmt:a,0).toLocaleString('en-IN')}</td>
+      <td>₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).advAmt:a,0).toLocaleString('en-IN')}</td>
+      <td style="color:var(--green);font-weight:700">₹${(data.workers||[]).reduce((a,w,wi)=>w.name?a+calcWageDetails(w,wi,curMonth,curYear).netPay:a,0).toLocaleString('en-IN')}</td>
     </tr>
     </tfoot>
   </table></div>
