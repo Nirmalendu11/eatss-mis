@@ -1400,13 +1400,16 @@ async function createRestaurant(){
     await masterUpdate(`RESTAURANTS!A${newRow}:E${newRow}`,
       [[restId,name,address,newSheetId,new Date().toLocaleDateString('en-IN')]]);
 
-    // 5. Add access emails
+    // 5. Add access emails + share the new sheet with each email
     const emails=emailsRaw.split(',').map(e=>e.trim().toLowerCase()).filter(e=>e);
     if(emails.length){
       const aRows=await masterGet('ACCESS!A2:D500');
       const startRow=aRows.length+2;
       const newAccessRows=emails.map(e=>[e,restId,'user',new Date().toLocaleDateString('en-IN')]);
       await masterUpdate(`ACCESS!A${startRow}:D${startRow+newAccessRows.length-1}`,newAccessRows);
+      // Share the restaurant sheet AND Master Registry with all emails
+      await shareSheetWithEmails(newSheetId, emails);
+      await shareSheetWithEmails(MASTER_SHEET_ID, emails);
     }
 
     toast('Restaurant "'+name+'" created ✓','success');
@@ -1449,8 +1452,11 @@ async function addAccessEmail(){
     const rows=await masterGet('ACCESS!A2:D500');
     const newRow=rows.length+2;
     await masterUpdate(`ACCESS!A${newRow}:D${newRow}`,[[email,curRestaurant.id,'user',new Date().toLocaleDateString('en-IN')]]);
+    // Share both the restaurant sheet and Master Registry with the new user
+    await shareSheetWithEmail(curRestaurant.sheetId, email);
+    await shareSheetWithEmail(MASTER_SHEET_ID, email);
     document.getElementById('new-access-email').value='';
-    toast('Access granted to '+email,'success');
+    toast('Access granted to '+email+' and sheet shared ✓','success');
     renderAccessMgmt();
   }catch(e){ toast('Failed: '+e.message,'error'); }
   finally{ loading(false); }
@@ -1484,6 +1490,31 @@ async function saveRestaurantDetails(){
     }
   }catch(e){ toast('Failed: '+e.message,'error'); }
   finally{ loading(false); }
+}
+
+// ── DRIVE SHARING ────────────────────────────────────────────────────────────
+async function shareSheetWithEmail(sheetId, email, role='writer'){
+  // Shares a Google Sheet with the given email via Drive API
+  try{
+    await gapi.client.request({
+      path: `https://www.googleapis.com/drive/v3/files/${sheetId}/permissions`,
+      method: 'POST',
+      params: { sendNotificationEmail: false },
+      body: JSON.stringify({ type:'user', role, emailAddress: email })
+    });
+    console.log(`Shared ${sheetId} with ${email} as ${role}`);
+    return true;
+  } catch(e){
+    // Non-fatal — log but don't block the main operation
+    console.warn(`Could not share sheet ${sheetId} with ${email}:`, e.result?.error?.message||e.message);
+    return false;
+  }
+}
+
+async function shareSheetWithEmails(sheetId, emails){
+  // Share with multiple emails; also always share Master Registry
+  const all = [...new Set(emails.map(e=>e.trim().toLowerCase()).filter(e=>e&&e.includes('@')))];
+  await Promise.all(all.map(email => shareSheetWithEmail(sheetId, email)));
 }
 
 // ── SHEETS API ───────────────────────────────────────────────────────────────
