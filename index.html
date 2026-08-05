@@ -1672,7 +1672,8 @@ async function openMonth(m,y){
     renderAll();
   }catch(e){
     console.error('openMonth error',e);
-    toast('Could not load month: '+e.message,'error');
+    const omsg=e?.result?.error?.message||e?.message||JSON.stringify(e)||'unknown';
+    toast('Could not load month: '+omsg,'error');
   }finally{
     loading(false);
   }
@@ -1680,6 +1681,7 @@ async function openMonth(m,y){
 
 async function saveData(){
   if(!data){ toast('No data to save','error'); return; }
+  if(!SHEET_ID){ toast('No restaurant sheet connected — please re-enter the restaurant','error'); return; }
   loading(true);
   try{
     const tab=sheetTab(curMonth,curYear);
@@ -1708,7 +1710,8 @@ async function saveData(){
     document.getElementById('save-status').textContent='Saved '+new Date().toLocaleTimeString();
   }catch(e){
     console.error('saveData error',e);
-    toast('Save failed: '+e.message,'error');
+    const msg=e?.result?.error?.message||e?.message||JSON.stringify(e)||'unknown error';
+    toast('Save failed: '+msg,'error');
   }finally{
     loading(false);
   }
