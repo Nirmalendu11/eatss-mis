@@ -2313,10 +2313,11 @@ function calcWageDetails(w,wi,m,y){
   }
   const otHrs = ot2*2 + ot4*4;
 
-  // Step 2: count weekly off days in this month for this worker
-  // A weekly off day that has a P/P2/P4 entry means the worker actually worked —
-  // that day is counted as a worked day (not a rest day), so it does NOT
-  // contribute to the weekly-off entitlement (Option A).
+  // Step 2: count weekly off days in this month from the calendar
+  // weeklyOffCount = total occurrences of the worker's WO day in the month
+  // Working on a WO day (P/P2/P4) is already captured in daysWorked —
+  // the formula handles it naturally via offDays, so we do NOT reduce
+  // weeklyOffCount for days worked on WO (removed Option A).
   let weeklyOffCount=0;
   if(w.weeklyOff){
     const woIdx=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(w.weeklyOff);
@@ -2324,12 +2325,7 @@ function calcWageDetails(w,wi,m,y){
       for(let d=1; d<=totalDays; d++){
         const dt=new Date(y,m-1,d);
         const nd=dt.getDay()===0?6:dt.getDay()-1; // Mon=0..Sun=6
-        if(nd===woIdx){
-          // Only count as weekly off if NOT marked as worked
-          const v=(rec[d]||'').toUpperCase().trim();
-          const workedOnWO = (v==='P'||v==='P2'||v==='P4'||v==='P/2');
-          if(!workedOnWO) weeklyOffCount++;
-        }
+        if(nd===woIdx) weeklyOffCount++;
       }
     }
   }
