@@ -1636,6 +1636,14 @@ async function openMonth(m,y){
       const rows=await sheetsGet(`${tab}!A1`);
       if(rows&&rows.length&&rows[0]&&rows[0][0]&&rows[0][0].trim()[0]==='{'){ const parsed=JSON.parse(rows[0][0]);
         if(parsed&&typeof parsed==='object'&&parsed.month){ data=parsed; loaded=true;
+          // Load food cost from separate FC tab
+          try{
+            const fcTab='FC_'+tab;
+            const fcRows=await sheetsGet(`${fcTab}!A1`);
+            if(fcRows&&fcRows.length&&fcRows[0]&&fcRows[0][0]){
+              data.foodCost=JSON.parse(fcRows[0][0]);
+            }
+          }catch(fce){ console.log('No FC tab yet for',tab,'— will create on save'); }
           if(!savedMonths.find(s=>s.month===m&&s.year===y)){
             savedMonths.push({month:m,year:y,tab,savedAt:'recovered',grossSales:0});
             savedMonths.sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month);
@@ -1685,8 +1693,13 @@ async function saveData(){
   loading(true);
   try{
     const tab=sheetTab(curMonth,curYear);
-    const jsonStr=JSON.stringify(data);
-    console.log('Saving',tab,'size:',jsonStr.length);
+    const fcTab='FC_'+tab;  // separate tab for food cost data
+    // Split data: save foodCost separately to avoid 50k char limit
+    const {foodCost, ...mainData} = data;
+    const jsonStr=JSON.stringify(mainData);
+    const fcStr=JSON.stringify(foodCost||{});
+    console.log('Saving',tab,'main:',jsonStr.length,'chars, FC:',fcStr.length,'chars');
+    if(jsonStr.length>50000) throw new Error('Main data too large ('+jsonStr.length+' chars) — please contact support');
     await ensureTab(tab);
     await gapi.client.request({
       path: `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(tab+'!A1')}`,
@@ -1694,6 +1707,16 @@ async function saveData(){
       params: {valueInputOption:'RAW'},
       body: JSON.stringify({range: tab+'!A1', values:[[jsonStr]]})
     });
+    // Save food cost to separate tab
+    if(foodCost){
+      await ensureTab(fcTab);
+      await gapi.client.request({
+        path: `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(fcTab+'!A1')}`,
+        method: 'PUT',
+        params: {valueInputOption:'RAW'},
+        body: JSON.stringify({range: fcTab+'!A1', values:[[fcStr]]})
+      });
+    }
     try{
       const vfy=await sheetsGet(`${tab}!A1`);
       if(!vfy||!vfy.length||!vfy[0][0]) throw new Error('empty');
