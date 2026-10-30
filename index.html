@@ -577,12 +577,18 @@ tr.total-row td { background: var(--surface3); font-weight: 600; color: var(--ac
     <!-- CASH EXPENSES -->
     <div id="tab-expenses" class="screen">
       <div class="section-hdr"><h2>Cash Expenses</h2><span class="pill">Cash / UPI payments only</span></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
+        <label style="font-size:13px;color:var(--text2)">Opening Petty Cash (₹)</label>
+        <input id="petty-open" type="text" inputmode="numeric" style="width:120px" onchange="data.pettyOpening=numVal(this.value);renderExpenses()" onkeydown="return blockArrows(event)">
+        <span style="font-size:13px;color:var(--text2)">Closing: <b id="petty-close"></b> <span id="petty-vcash" style="color:var(--text3)"></span></span>
+        <button class="add-row-btn" style="margin:0" onclick="pullFromPrevMonth()">⟲ Pull opening balances from previous month</button>
+      </div>
       <div class="tbl-wrap">
         <table class="entry-table" id="exp-table">
           <thead><tr>
             <th class="left">Date</th><th class="left">Category / Description</th>
-            <th class="left">Vendor / Payee</th><th>Amount (₹)</th>
-            <th class="left">Mode</th><th class="left">Tag</th><th class="left">Notes</th><th></th>
+            <th class="left">Vendor / Payee</th><th>Receipt from Bank (₹)</th><th>Cash Deposited to Bank (₹)</th><th>Amount (₹)</th>
+            <th>Balance (₹)</th><th class="left">Mode</th><th class="left">Tag</th><th class="left">Notes</th><th></th>
           </tr></thead>
           <tbody id="exp-body"></tbody>
         </table>
@@ -820,6 +826,7 @@ function blankData(m,y,prevWorkers){
   return {
     month:m, year:y,
     openingCash:0,
+    pettyOpening:0,
     commRates:{zomato:3,swiggy:2.5,toing:0,dineout:0,district:0,card:0,upi:0,cash:0,any_other:0},
     sales,
     expenses:[],
@@ -1623,6 +1630,41 @@ async function saveIndex(){
 }
 
 // ── OPEN / SAVE MONTH ────────────────────────────────────────────────────────
+// ── CARRY-FORWARD (vendor balances + petty cash) ─────────────────────────────
+function vendorClosing(d,v){
+  const op=+((d.vendorOpening||{})[v]||0);
+  const pur=Object.values(d.vendorPurchases||{}).reduce((a,r)=>a+(+(r||{})[v]||0),0);
+  const paidLog=(d.vendorPayLog||[]).filter(p=>p.vendor===v).reduce((a,p)=>a+(+p.amount||0),0);
+  const paidBank=(d.bankExpenses||[]).filter(e=>e.category==='Vendor Payment'&&e.vendor===v).reduce((a,e)=>a+(+e.amount||0),0);
+  return op+pur-paidLog-paidBank;
+}
+function vendorCashPaid(d){ return (d.vendorPayLog||[]).filter(p=>p.mode==='Cash').reduce((a,p)=>a+(+p.amount||0),0); }
+function pettyClosing(d){
+  let bal=+(d.pettyOpening||0)-vendorCashPaid(d);
+  (d.expenses||[]).forEach(e=>{ bal+=(+e.bankReceipt||0)-(+e.bankDeposit||0); if((e.mode||'Cash')==='Cash') bal-=(+e.amount||0); });
+  return bal;
+}
+async function loadPrevMonthData(m,y){
+  let pm=m-1, py=y; if(pm<1){pm=12;py=y-1;}
+  try{
+    const rows=await sheetsGet(`${sheetTab(pm,py)}!A1`);
+    if(rows&&rows.length&&rows[0]&&rows[0][0]&&rows[0][0].trim()[0]==='{') return JSON.parse(rows[0][0]);
+  }catch(e){}
+  return null;
+}
+function applyCarryForward(prev){
+  VENDORS.forEach(v=>{ data.vendorOpening[v]=Math.round(vendorClosing(prev,v)*100)/100; });
+  data.pettyOpening=Math.round(pettyClosing(prev)*100)/100;
+}
+async function pullFromPrevMonth(){
+  if(!confirm('Replace this month\'s vendor opening balances and petty cash opening with the previous month\'s closing?')) return;
+  loading(true);
+  const prev=await loadPrevMonthData(curMonth,curYear);
+  loading(false);
+  if(!prev){ toast('Previous month not found','error'); return; }
+  applyCarryForward(prev); renderAll(); toast('Opening balances updated from previous month — remember to Save');
+}
+
 async function openMonth(m,y){
   loading(true);
   try{
@@ -1659,6 +1701,8 @@ async function openMonth(m,y){
         try{ const pr=await sheetsGet(`${last.tab}!A1`); if(pr&&pr.length&&pr[0][0]){const d2=JSON.parse(pr[0][0]); prevWorkers=d2.workers||[];} }catch(e){}
       }
       data=blankData(m,y,prevWorkers);
+      const prevD=await loadPrevMonthData(m,y);
+      if(prevD){ applyCarryForward(prevD); toast('Opening balances carried forward from previous month'); }
     }
     if(data){
       if(!data.vendorOpening) data.vendorOpening={};
@@ -1669,6 +1713,7 @@ async function openMonth(m,y){
       if(!data.bankExpenses) data.bankExpenses=[];
       if(!data.advances) data.advances=[];
       if(!data.expenses) data.expenses=[];
+      if(data.pettyOpening===undefined) data.pettyOpening=0;
       if(!data.workers) data.workers=[];
       if(!data.attendance) data.attendance={};
       if(!data.commRates) data.commRates={};
@@ -1876,8 +1921,8 @@ function vpayRow(p,i){
     <td><input value="${p.date||''}" placeholder="DD-Mon-YY" onchange="data.vendorPayLog[${i}].date=this.value"></td>
     <td><select onchange="data.vendorPayLog[${i}].vendor=this.value;renderVpayOutstanding()" style="width:100%;background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--font-body);font-size:14px">
       <option value="">-- Select Vendor --</option>${vOpts}</select></td>
-    <td><input type="text" inputmode="numeric" value="${p.amount||''}" placeholder="0" onchange="data.vendorPayLog[${i}].amount=numVal(this.value);renderVpayOutstanding()" onkeydown="return blockArrows(event)"></td>
-    <td><select onchange="data.vendorPayLog[${i}].mode=this.value" style="width:100%;background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--font-body);font-size:14px">
+    <td><input type="text" inputmode="numeric" value="${p.amount||''}" placeholder="0" onchange="data.vendorPayLog[${i}].amount=numVal(this.value);renderVpayOutstanding();renderExpenses()" onkeydown="return blockArrows(event)"></td>
+    <td><select onchange="data.vendorPayLog[${i}].mode=this.value;renderExpenses()" style="width:100%;background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--font-body);font-size:14px">
       <option ${p.mode==='Bank Transfer'?'selected':''}>Bank Transfer</option>
       <option ${p.mode==='UPI'?'selected':''}>UPI</option>
       <option ${p.mode==='Cash'?'selected':''}>Cash</option>
@@ -2137,21 +2182,32 @@ function updateSalesRowTotal(day){ /* totals are computed on next render, light 
 function renderExpenses(){
   const tbody=document.getElementById('exp-body');
   tbody.innerHTML='';
-  (data.expenses||[]).forEach((e,i)=>{ tbody.appendChild(expRow(e,i)); });
+  const vcp=vendorCashPaid(data);
+  let bal=+(data.pettyOpening||0)-vcp;
+  const vn=document.getElementById('petty-vcash'); if(vn) vn.textContent=vcp?('(less vendor cash payments ₹'+vcp.toLocaleString('en-IN')+')'):'';
+  (data.expenses||[]).forEach((e,i)=>{
+    bal+=(+e.bankReceipt||0)-(+e.bankDeposit||0); if((e.mode||'Cash')==='Cash') bal-=(+e.amount||0);
+    tbody.appendChild(expRow(e,i,bal));
+  });
+  const po=document.getElementById('petty-open'); if(po) po.value=data.pettyOpening||0;
+  const pc=document.getElementById('petty-close'); if(pc){ pc.textContent='₹'+bal.toLocaleString('en-IN'); pc.style.color=bal<0?'var(--red)':'var(--green)'; }
 }
-function expRow(e,i){
+function expRow(e,i,bal){
   const tr=document.createElement('tr');
   tr.innerHTML=`<td><input value="${e.date||''}" placeholder="DD-Mon" onchange="data.expenses[${i}].date=this.value"></td>
 <td><input value="${e.cat||''}" placeholder="Description" onchange="data.expenses[${i}].cat=this.value"></td>
 <td><input value="${e.vendor||''}" placeholder="Vendor" onchange="data.expenses[${i}].vendor=this.value"></td>
-<td><input type="text" inputmode="numeric" value="${e.amount||''}" placeholder="0" onchange="data.expenses[${i}].amount=numVal(this.value)" onkeydown="return blockArrows(event)"></td>
+<td><input type="text" inputmode="numeric" value="${e.bankReceipt||''}" placeholder="0" onchange="data.expenses[${i}].bankReceipt=numVal(this.value);renderExpenses()" onkeydown="return blockArrows(event)"></td>
+<td><input type="text" inputmode="numeric" value="${e.bankDeposit||''}" placeholder="0" onchange="data.expenses[${i}].bankDeposit=numVal(this.value);renderExpenses()" onkeydown="return blockArrows(event)"></td>
+<td><input type="text" inputmode="numeric" value="${e.amount||''}" placeholder="0" onchange="data.expenses[${i}].amount=numVal(this.value);renderExpenses()" onkeydown="return blockArrows(event)"></td>
+<td style="text-align:right;font-weight:600;color:${bal<0?'var(--red)':'var(--text)'}">₹${(bal||0).toLocaleString('en-IN')}</td>
 <td><select onchange="data.expenses[${i}].mode=this.value" style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:6px;padding:6px 8px;color:var(--text);font-family:var(--font-body);font-size:13px"><option ${(e.mode||'Cash')==='Cash'?'selected':''}>Cash</option><option ${(e.mode||'Cash')==='UPI'?'selected':''}>UPI</option></select></td>
 <td><select onchange="data.expenses[${i}].tag=this.value" style="background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:6px;padding:6px 8px;color:var(--text);font-family:var(--font-body);font-size:13px">${['Cleaning & Sanitation', 'Transport', 'Utilities', 'Kitchen Supplies', 'Staff Welfare', 'Repairs', 'Petty Cash', 'Other'].map(c=>`<option value="${c}" ${(e.tag||'Other')===c?'selected':''}>${c}</option>`).join('')}</select></td>
 <td><input value="${e.notes||''}" placeholder="Notes" onchange="data.expenses[${i}].notes=this.value"></td>
 <td><button class="del-btn" onclick="delExpRow(${i})">✕</button></td>`;
   return tr;
 }
-function addExpRow(){ data.expenses.push({date:'',cat:'',vendor:'',amount:0,mode:'Cash',tag:'Other',notes:''}); renderExpenses(); }
+function addExpRow(){ data.expenses.push({date:'',cat:'',vendor:'',amount:0,mode:'Cash',tag:'Other',notes:'',bankReceipt:0}); renderExpenses(); }
 function delExpRow(i){ data.expenses.splice(i,1); renderExpenses(); }
 
 // ── BANK EXPENSES ─────────────────────────────────────────────────────────────
